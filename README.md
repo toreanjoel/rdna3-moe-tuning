@@ -57,6 +57,10 @@ curl -s localhost:8080/v1/chat/completions -H 'Content-Type: application/json' \
   -d '{"messages":[{"role":"user","content":"hi"}],"max_tokens":64}'
 ```
 
+Coding tools work against it with tool calls and streaming: OpenAI chat (Cursor, Continue, Cline, Roo, Aider),
+Anthropic messages (Claude Code: `ANTHROPIC_BASE_URL=http://127.0.0.1:8080`) and OpenAI Responses (Codex).
+`python3 tools/api_smoke.py [url]` checks all three (9/9 pass on 2026-11-22).
+
 ## Commands
 
 | command | does |
@@ -78,6 +82,7 @@ Defaults are the measured best within the card's limits. Override any of them pe
 
 | variable | default | notes |
 |---|---|---|
+| `FAST` | 0 | `1` = skip low-ranked missed experts: decode ~110 tok/s, answers change slightly ([below](#what-was-tried)) |
 | `WATTS` | 294 | power cap; the ceiling for this card |
 | `SCLK` | 2300 | core clock max (MHz); higher brings coil whine for ~1 tok/s |
 | `MCLK` | 1300 | VRAM clock (MHz); generation waits on it |
@@ -100,11 +105,14 @@ Defaults are the measured best within the card's limits. Override any of them pe
 | `--spec-min-p 0.3`, `--lookup-chain 3` | within noise | no |
 | `STRATA_MTP_DRAFT_ALL`, `MTP_QFUSE/MULTICOPY/GR_R8` | within noise | no |
 | `STRATA_MEGAKERNEL=1` | within noise | no |
+| `STRATA_IQ_PREFETCH` 1024 / 4096, `STRATA_CPU_YMM=1` (CPU expert kernels) | within noise | no |
+| `STRATA_ROUTE_TAIL_SKIP=7` (`FAST=1`) | decode 101→111 (8K), 103→109 (32K); top-1 agreement 92.6%, KL 0.050, reference perplexity 4.064→4.041 | opt-in |
+| `STRATA_ROUTE_TAIL_SKIP=8` | decode 109 / 106; KL 0.047 | no (tail7 faster, same cost) |
+| `STRATA_ROUTE_RESIDENT=0.5` / `1.0`, `STRATA_ROUTE_PRIOR=0.5` | decode 105–110; KL 0.08–0.09, top-1 ~90% | no |
 | llama.cpp (Vulkan, ROCm) | 4–8× slower generation | no |
 
 Generation sits at ~100–108 tok/s at 8–32K context: each step waits on the ~10% of experts computed on the CPU,
-which is bound by dual-channel DDR5. Left out on purpose: higher clocks or power, expert skipping (`STRATA_ROUTE_TAIL_SKIP`, faster but changes
-outputs), and 47 GB of reserved huge pages. The next big step is hardware: a second 7900 XTX (the author's
+which is bound by dual-channel DDR5. Left out on purpose: higher clocks or power, expert skipping by default (`FAST=1` turns it on), and 47 GB of reserved huge pages. The next big step is hardware: a second 7900 XTX (the author's
 runs reach 130–170 tok/s).
 
 ## Repo

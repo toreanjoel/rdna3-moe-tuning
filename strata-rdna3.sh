@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # strata-rdna3.sh — install, run and benchmark the RDNA3 Strata fork (nicejunjie/Strata-rdna3) on one RX 7900 XTX.
 # Usage: ./strata-rdna3.sh install | serve | stop | status | tune | patch | bench [lengths] | uninstall
-# Env: HOST PORT SETUP GPUS TUNE SCLK MCLK VO WATTS EPP BOOST, XENV/XARGS (engine overrides), NAME/REPEATS (bench)
+# Env: FAST HOST PORT SETUP GPUS TUNE SCLK MCLK VO WATTS EPP BOOST, XENV/XARGS (engine overrides), NAME/REPEATS (bench)
 set -euo pipefail
 
 REPO=https://github.com/nicejunjie/Strata-rdna3
@@ -21,7 +21,11 @@ mkdir -p "$R/logs"
 # hipBLASLt table matching ROCm 7.2.x (runtime 100202); the shipped config names 100200, which the engine rejects
 # and falls back to untuned GEMMs. Measured 2026-11-21: prompts 2641->2840 (8K), 3266->3553 (32K); decode unchanged.
 TABLE=${TABLE:-$SRC/tools/hip/gfx1100-hipblaslt-100202.txt}
-export STRATA_X_ENV="STRATA_HIPBLASLT_TUNING=$TABLE ${XENV:-}" STRATA_X_ARGS="${XARGS:-}"
+# FAST=1: skip a missed expert that every token of a verify window ranks 8th-10th (STRATA_ROUTE_TAIL_SKIP=7).
+# Measured 2026-11-22: decode 101->111 (8K), 103->109 (32K); answers change (top-1 agreement 92.6%, KL 0.050,
+# perplexity of the reference text 4.064->4.041). Off by default: the default gives the engine's exact answers.
+FASTENV=""; [ "${FAST:-0}" = 1 ] && FASTENV="STRATA_ROUTE_TAIL_SKIP=7"
+export STRATA_X_ENV="STRATA_HIPBLASLT_TUNING=$TABLE $FASTENV ${XENV:-}" STRATA_X_ARGS="${XARGS:-}"
 
 # setup.py moves the models of every Strata install listed in ~/.config/strata; a private config stops that.
 export XDG_CONFIG_HOME=$SRC/.config

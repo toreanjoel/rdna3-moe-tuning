@@ -1,0 +1,51 @@
+== s4base  XENV=[] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2830    2436   1.16     101.4  119.0   0.85
+   32768      3555    3541   1.00     103.3  114.1   0.91
+all 10 requests passed
+== pf4096  XENV=[STRATA_IQ_PREFETCH=4096] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2839    2436   1.17     101.3  119.0   0.85
+   32768      3555    3541   1.00     103.3  114.1   0.91
+all 10 requests passed
+== pf1024  XENV=[STRATA_IQ_PREFETCH=1024] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2837    2436   1.16     101.6  119.0   0.85
+   32768      3550    3541   1.00     103.3  114.1   0.91
+all 10 requests passed
+== ymm  XENV=[STRATA_CPU_YMM=1] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2837    2436   1.16     101.4  119.0   0.85
+   32768      3551    3541   1.00     103.1  114.1   0.90
+all 10 requests passed
+== tail8  XENV=[STRATA_ROUTE_TAIL_SKIP=8] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2842    2436   1.17     109.0  119.0   0.92
+   32768      3550    3541   1.00     106.0  114.1   0.93
+all 10 requests passed
+== tail7  XENV=[STRATA_ROUTE_TAIL_SKIP=7] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2841    2436   1.17     111.5  119.0   0.94
+   32768      3550    3541   1.00     109.0  114.1   0.96
+all 10 requests passed
+== res05  XENV=[STRATA_ROUTE_RESIDENT=0.5] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2843    2436   1.17     110.1  119.0   0.93
+   32768      3551    3541   1.00     105.4  114.1   0.92
+all 10 requests passed
+== res10  XENV=[STRATA_ROUTE_RESIDENT=1.0] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2845    2436   1.17     110.3  119.0   0.93
+   32768      3551    3541   1.00     105.0  114.1   0.92
+all 10 requests passed
+== prior05  XENV=[STRATA_ROUTE_PRIOR=0.5] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2846    2436   1.17     109.1  119.0   0.92
+   32768      3549    3541   1.00     104.5  114.1   0.92
+all 10 requests passed
+== t7res05  XENV=[STRATA_ROUTE_TAIL_SKIP=7 STRATA_ROUTE_RESIDENT=0.5] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2843    2436   1.17     107.8  119.0   0.91
+   32768      3551    3541   1.00     105.8  114.1   0.93
+all 10 requests passed
+sweep4 done
