@@ -1,0 +1,46 @@
+== s5base  T=0 XENV=[] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2861    2436   1.17     108.8  119.0   0.91
+   32768      3555    3541   1.00     109.4  114.1   0.96
+all 10 requests passed
+== g1151  T=0 XENV=[STRATA_ATTN_LANECELL=1 STRATA_MMVF_ROWS=1 STRATA_TSUM=1 STRATA_LFUSE=1 STRATA_GDN_SPLIT=1 STRATA_PLE_BATCH=1 STRATA_EXPERT_V2=1] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2867    2436   1.18     105.8  119.0   0.89
+   32768      3555    3541   1.00     107.4  114.1   0.94
+all 10 requests passed
+== adaptlag  T=0 XENV=[STRATA_ADAPT_LAG=2 STRATA_ADAPT_NOWAIT=1 STRATA_ADAPT_OVERLAP=0] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2866    2436   1.18     112.2  119.0   0.94
+   32768      3554    3541   1.00     113.4  114.1   0.99
+all 10 requests passed
+== copyprio  T=0 XENV=[STRATA_COPY_HIP_PRIO=1] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2864    2436   1.18     105.1  119.0   0.88
+   32768      3554    3541   1.00     107.7  114.1   0.94
+all 10 requests passed
+== hostsib  T=0 XENV=[] XARGS=[--host-core sibling]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2865    2436   1.18     109.0  119.0   0.92
+   32768      3552    3541   1.00     109.3  114.1   0.96
+all 10 requests passed
+== hcreq8  T=0 XENV=[STRATA_HC_REQ8=1] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2697    2436   1.11     114.0  119.0   0.96
+   32768      3348    3541   0.95     106.9  114.1   0.94
+all 10 requests passed
+== t06base  T=0.6 XENV=[] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2865    2436   1.18     108.3  119.0   0.91
+   32768      3552    3541   1.00     113.8  114.1   1.00
+all 10 requests passed
+== t06coup  T=0.6 XENV=[STRATA_SPEC_COUPLED=1] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2862    2436   1.18     101.1  119.0   0.85
+   32768      3550    3541   1.00     101.4  114.1   0.89
+all 10 requests passed
+== t06gumb  T=0.6 XENV=[STRATA_SPEC_COUPLED=1 STRATA_SPEC_GUMBEL=1] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2863    2436   1.18     103.6  119.0   0.87
+   32768      3553    3541   1.00     105.3  114.1   0.92
+all 10 requests passed
+sweep5 done

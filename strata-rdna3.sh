@@ -82,7 +82,8 @@ install() {
 # Local patches to the fork (idempotent): bench.py without vision; run.py takes overrides from XENV / XARGS.
 patch_fork() {
   sed -i 's/rdna3_run.config(a.setup, a.data, a.gpus, vision=True)/rdna3_run.config(a.setup, a.data, a.gpus, vision=False)/;
-          s|"--log", str(out / "engine.log")\]|"--log", str(out / "engine.log"), "--no-vision"]|' "$SRC/rdna3/bench.py"
+          s|"--log", str(out / "engine.log")\]|"--log", str(out / "engine.log"), "--no-vision"]|;
+          s|"max_tokens": n, "temperature": 0,|"max_tokens": n, "temperature": float(os.environ.get("BENCH_TEMP", "0")),|' "$SRC/rdna3/bench.py"
   grep -q 'STRATA_X_ENV' "$SRC/rdna3/run.py" && return
   "$SRC/.venv/bin/python" - "$SRC/rdna3/run.py" <<'PY'
 import sys, pathlib
@@ -152,6 +153,7 @@ status() {
 
 bench() {
   [ "${TUNE:-1}" = 1 ] && tune
+  patch_fork   # idempotent; BENCH_TEMP=0.6 benches sampled answers (default 0 = greedy)
   stop_all
   cd "$SRC"
   .venv/bin/python rdna3/bench.py "$SETUP" --data "$D" --gpus "$GPUS" --lengths "${1:-8192,32768}" \
