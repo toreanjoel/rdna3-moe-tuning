@@ -1,9 +1,9 @@
 # shop-cart: a test task for the local model
 
-A tiny Python project with 3 bugs and one missing feature. 4 of 7 tests fail until they are fixed. No dependencies.
+A tiny Python project with 3 bugs and one missing feature. 6 of 7 tests fail until they are fixed. No dependencies.
 
 ```bash
-cd examples/shop-cart && python3 -m unittest -v     # before: 4 failures
+cd examples/shop-cart && python3 -m unittest -v     # before: 6 of 7 fail
 ```
 
 Point your coding tool at the server (`http://127.0.0.1:8080/v1` for OpenAI-style tools, `ANTHROPIC_BASE_URL=http://127.0.0.1:8080`
