@@ -53,7 +53,7 @@ Requires ROCm 7.x in `/opt/rocm` and your user in the `render`/`video` groups. B
 │   ├── strata-rdna3.sh        this repo's launcher
 │   ├── engine/                source pinned at 6c2cd28, engine/strata binary, .venv, private .config  (~1 GB)
 │   ├── data/
-│   │   ├── models/IQ3_S  ->   ~/.local/share/strata/Strata-data/models/IQ3_S  (symlink, 82 GB not copied)
+│   │   ├── models/IQ3_S/      the GGUF shards (82 GB; moved here from stock Strata, which install still links if present)
 │   │   ├── packs/iq3_s/       experts.bin (byte copy of the GGUF experts, read with O_DIRECT) + dense pack  (48 GB)
 │   │   └── mtp/               MTP draft head  (6.5 GB)
 │   ├── logs/                  setup.log, serve.log, serve.out, bench.log
