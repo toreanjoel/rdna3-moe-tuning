@@ -1,0 +1,17 @@
+== s7base0  XENV=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2860    2436   1.17     109.0  119.0   0.92
+all 3 requests passed
+== s7d8  XENV=[STRATA_DUMMY_NODES=8]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2863    2436   1.18     102.9  119.0   0.86
+all 3 requests passed
+== s7d24  XENV=[STRATA_DUMMY_NODES=24]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2858    2436   1.17      93.4  119.0   0.78
+all 3 requests passed
+== s7base1  XENV=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2866    2436   1.18     109.0  119.0   0.92
+all 3 requests passed
+sweep7 done

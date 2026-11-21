@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # strata-rdna3.sh — install, run and benchmark the RDNA3 Strata fork (nicejunjie/Strata-rdna3) on one RX 7900 XTX.
-# Usage: ./strata-rdna3.sh install | serve | stop | status | monitor | speed | quality | tune | patch | bench [lengths] | uninstall
+# Usage: ./strata-rdna3.sh install | serve | stop | status | monitor | speed | quality | tune | patch | build | bench [lengths] | uninstall
 # Env: FAST CTX HOST PORT SETUP GPUS TUNE SCLK MCLK VO WATTS EPP BOOST, XENV/XARGS (engine overrides), NAME/REPEATS (bench)
 set -euo pipefail
 
@@ -160,6 +160,33 @@ bench() {
     --repeats "${REPEATS:-3}" --out "$R/bench/${NAME:-default}" 2>&1 | tee "$R/logs/bench-${NAME:-default}.log"
 }
 
+# Engine rebuild with this repo's kernel patches (patches/*.patch next to this script, applied on top of PIN; each one
+# idempotent and each change behind its own env switch). TARGETS (default strata) and TESTS=ON for the kernel benches.
+# A rebuilt strata replaces engine/strata by rename (a running server keeps the old file until its restart).
+build_engine() {
+  local here; here=$(cd "$(dirname "$0")" && pwd)
+  cd "$SRC"
+  for p in "$here"/patches/*.patch; do
+    [ -e "$p" ] || continue
+    if git apply --reverse --check "$p" 2>/dev/null; then echo "patch already in: $(basename "$p")"
+    else git apply "$p" && echo "patch applied: $(basename "$p")" || { echo "patch failed: $p"; exit 1; }; fi
+  done
+  # the build folder was configured where the source used to live: start it again here (a full rebuild, ~15 min)
+  if [ -f build-hip/CMakeCache.txt ] && ! grep -q "^CMAKE_HOME_DIRECTORY:INTERNAL=$SRC\$" build-hip/CMakeCache.txt; then
+    rm -rf build-hip/CMakeCache.txt build-hip/CMakeFiles
+  fi
+  cmake -G Ninja -S . -B build-hip -DCMAKE_BUILD_TYPE=Release -DSTRATA_ENABLE_HIP=ON -DSTRATA_ENABLE_CUDA=OFF \
+    -DSTRATA_BUILD_TESTS="${TESTS:-OFF}" -DSTRATA_PREFILL_MMQ=ON -DSTRATA_Q6K_EXPERTS=ON -DSTRATA_MMQ_KQUANTS=ON \
+    -DCMAKE_HIP_ARCHITECTURES=gfx1100 -DCMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ -DCMAKE_HIP_COMPILER_ROCM_ROOT=/opt/rocm \
+    -DCMAKE_PREFIX_PATH=/opt/rocm "-DCMAKE_HIP_FLAGS=--rocm-path=/opt/rocm --rocm-device-lib-path=/opt/rocm/amdgcn/bitcode" \
+    -DSTRATA_GGML_DIR="$SRC/third_party/llama.cpp" -DSTRATA_ROCWMMA_INCLUDE_DIR="$SRC/third_party/rocwmma/library/include" \
+    > "$R/logs/build-configure.log" 2>&1 || { tail -20 "$R/logs/build-configure.log"; exit 1; }
+  nice cmake --build build-hip --target ${TARGETS:-strata} 2>&1 | tail -3
+  case " ${TARGETS:-strata} " in *" strata "*)
+    cp build-hip/strata engine/strata.new && mv engine/strata.new engine/strata && echo "engine/strata replaced" ;;
+  esac
+}
+
 uninstall() {
   stop_all
   echo "removing $SRC and $D (the stock Strata folder $OLD is not touched)"
@@ -175,6 +202,7 @@ case "${1:-}" in
   status) status ;;
   tune) tune ;;
   patch) patch_fork ;;
+  build) build_engine ;;
   bench) bench "${2:-}" ;;
   quality) R=$R SRC=$SRC D=$D SETUP=$SETUP PORT=$PORT FAST=$FAST LAUNCHER="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")" \
              bash "$(cd "$(dirname "$0")" && pwd)/tools/quality.sh" ;;   # ~1 h: KL + HumanEval, exact vs FAST

@@ -1,0 +1,67 @@
+# kprof-k3 (2026-11-22): rocprofv3 kernel trace of 3 x 512-token greedy chats, tool preloaded into the engine only
+# NOTE: per-kernel times inside HIP graph replays are NOT valid on ROCm 7.2.4 (graph kernels share end timestamps; tested
+# with a 8-kernel spin graph). Names and counts per token are valid; 'excl/raw us' columns are not.
+windows 3  tokens 1536  wall 15.44 s -> 99.5 tok/s (profiled)
+per token: wall 10.052 ms  GPU busy 1.490 ms  idle gaps 8.561 ms  launches 637  dispatches per queue {'5': 4023, '4': 252, '3': 91435, '6': 882578, '1': 33}
+gaps: n/tok 101  median 3.4 us  p90 58.6 us  >100us: 7.839 ms/tok
+ ms/tok     %  n/tok excl us  raw us  kernel
+  0.123   8.2    9.4    13.0    44.9  native_gu_multi_kernel<22, true, true>
+  0.114   7.7   16.0     7.1    24.5  rdna_gr_fused<4>
+  0.113   7.6   18.4     6.1    32.3  native_down_multi_kernel<20, true, false>
+  0.102   6.9   21.5     4.8    21.1  rdna_q6k_kernel<4, 3>
+  0.063   4.2   15.9     4.0    16.0  route_publish_res
+  0.057   3.8   15.9     3.6    15.8  combine_cpu_k10_vec4<true>
+  0.056   3.7    8.0     6.9    41.4  native_gu_multi_kernel<18, false, true>
+  0.048   3.2    4.2    11.3    30.0  native_down_multi_kernel<42, true, false>
+  0.043   2.9    5.8     7.4    22.7  rdna_kq_kernel<13, 4, 3>
+  0.042   2.8    6.7     6.2    35.6  attn_chunk_kernel<1, false, false, false>
+  0.038   2.5   17.0     2.2     9.7  gdn_step_norm_multi_kernel<true, true>
+  0.037   2.5    7.8     4.8    14.6  rdna_kq_kernel<12, 4, 3>
+  0.035   2.3    6.9     5.0    21.3  rdna_gr_fused<3>
+  0.032   2.2    4.7     6.8    43.6  native_gu_multi_kernel<21, false, true>
+  0.031   2.1    9.3     3.3    19.8  rdna_q6k_kernel<3, 3>
+  0.031   2.0    2.9    10.3    10.8  __amd_rocclr_copyBuffer
+  0.030   2.0   22.6     1.3    12.0  wait_flag_copy_i32_kernel
+  0.028   1.9    8.8     3.2    18.5  rdna_gr_fused<2>
+  0.027   1.8   11.8     2.2    19.0  rdna_q6k_kernel<2, 5>
+  0.025   1.7    5.8     4.3     6.5  copy_i32_from_mapped_kernel
+  0.022   1.4   12.3     1.7     6.5  bf16_f32_mmvf_multi_kernel<256, 4, true>
+  0.020   1.4    7.0     2.9    10.8  rdna_kq_kernel<23, 4, 3>
+  0.017   1.2   19.1     0.9     4.4  bf16_f32_mmvf_kernel<256>
+  0.017   1.1    6.0     2.8     8.1  gdn_conv_ab_kernel<4, true>
+  0.016   1.1   22.6     0.7     2.0  swiglu_q8_1_entries_kernel
+  0.015   1.0   19.6     0.8     2.9  apply<false>
+  0.015   1.0    7.8     2.0     6.0  native_mmvq_wave_exact_kernel<SmallTraits<IQ4NLBlock, 4>, 4>
+  0.014   1.0   23.7     0.6     1.7  native_swiglu_quantize_q8_1_kernel
+  0.014   0.9    3.9     3.5    17.7  rdna_kq_kernel<23, 2, 5>
+  0.012   0.8   19.0     0.6     1.6  norm<256>
+  0.012   0.8    2.5     4.8    20.1  native_mmvq_wave_exact_kernel<Q5KTraits, 3>
+  0.012   0.8    3.4     3.5    12.1  native_mmvq_wave_exact_kernel<Q4KTraits, 3>
+  0.011   0.8    3.2     3.5    17.3  native_mmvq_wave_exact_kernel<Q5KTraits, 2>
+  0.010   0.7    7.7     1.4     9.9  route
+  0.010   0.6    1.5     6.3     8.5  embed_rows_kernel
+  0.009   0.6    4.3     2.2    10.5  native_mmvq_wave_exact_kernel<Q4KTraits, 2>
+  0.009   0.6    5.3     1.7     6.4  bf16_f32_mmvf_multi_kernel<256, 3, true>
+  0.009   0.6   18.0     0.5    18.3  rdna_q6k_kernel<1, 5>
+  0.009   0.6    6.7     1.3     6.9  attn_merge_kernel
+  0.008   0.5    3.0     2.7    10.6  rdna_kq_kernel<23, 3, 3>
+  0.008   0.5    6.8     1.1     5.9  bf16_f32_mmvf_multi_kernel<256, 2, true>
+  0.008   0.5    5.7     1.3     5.0  append<false>
+  0.007   0.5    5.7     1.3     4.2  resolve_kernel
+  0.007   0.4   12.8     0.5     1.7  native_quantize_q8_1_kernel
+  0.006   0.4    6.7     1.0     3.8  kv_append_q8_kernel<true>
+  0.006   0.4   13.4     0.5    14.6  rdna_gr_fused<1>
+  0.006   0.4    3.4     1.7     5.4  native_mmvq_wave_exact_kernel<SmallTraits<IQ4NLBlock, 4>, 3>
+  0.005   0.3    3.3     1.5     6.1  gdn_conv_ab_kernel<2, true>
+  0.005   0.3    0.5    10.1    10.3  gdn_conv_commit_layers_kernel
+  0.005   0.3    0.5     9.7     9.9  append_layers<false>
+  0.005   0.3    4.3     1.1     4.7  native_mmvq_wave_exact_kernel<SmallTraits<IQ4NLBlock, 4>, 2>
+  0.005   0.3    2.6     1.7     7.0  gdn_conv_ab_kernel<3, true>
+  0.004   0.3    6.7     0.6     2.1  gate
+  0.004   0.3    7.8     0.5     2.2  copy_from_mapped_kernel
+  0.003   0.2    6.7     0.5     3.8  copy_rows_from_mapped_kernel
+  0.003   0.2    5.7     0.6     1.4  block_topk_reg_kernel<33>
+  0.003   0.2    6.5     0.5     9.4  native_mmvq_wave_exact_kernel<Q4KTraits, 1>
+  0.003   0.2    4.0     0.8     1.8  copy_rows_strided_kernel
+  0.003   0.2    6.7     0.5     3.9  doorbell_publish_res_kernel
+  0.003   0.2    5.7     0.6     1.2  copy_kernel

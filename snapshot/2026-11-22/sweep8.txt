@@ -1,0 +1,21 @@
+== s8base0  XENV=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2865    2436   1.18     108.9  119.0   0.92
+all 3 requests passed
+== s8karg  XENV=[HIP_FORCE_DEV_KERNARG=1]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2865    2436   1.18     108.8  119.0   0.91
+all 3 requests passed
+== s8nocap  XENV=[DEBUG_CLR_GRAPH_PACKET_CAPTURE=0]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2864    2436   1.18     108.9  119.0   0.92
+all 3 requests passed
+== s8base1  XENV=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2861    2436   1.17     108.7  119.0   0.91
+all 3 requests passed
+== s8karg1  XENV=[HIP_FORCE_DEV_KERNARG=1]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2864    2436   1.18     109.0  119.0   0.92
+all 3 requests passed
+sweep8 done
