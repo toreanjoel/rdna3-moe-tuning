@@ -41,22 +41,30 @@ Tuning defaults are this box's measured profile: SCLK max 2300 MHz (no maxed cor
 -50 mV, 294 W cap, CPU EPP `performance`, boost on. They reset on reboot; `serve` reapplies them. The 2,643 / 3,270 /
 100 tok/s row was measured with them on.
 
-From another machine: `ssh -t bonfire@10.0.0.51 '~/work/strata-rdna3.sh serve'` (the `-t` lets sudo ask).
+On the box the script lives at `~/work/rdna3/strata-rdna3.sh` (copy it there from this repo). From another
+machine: `ssh -t bonfire@10.0.0.51 '~/work/rdna3/strata-rdna3.sh serve'` (the `-t` lets sudo ask).
 
-Requires ROCm 7.x in `/opt/rocm` and your user in the `render`/`video` groups. Where things go (all removable with
-`uninstall`; the stock Strata folder is never touched):
+Requires ROCm 7.x in `/opt/rocm` and your user in the `render`/`video` groups. Box layout (`R=` moves the root;
+`uninstall` removes `~/work/rdna3` only, the stock Strata folder is never touched):
 
-| path | size | what |
-|---|---|---|
-| `~/work/strata-rdna3` | ~1 GB | source pinned at `6c2cd28`, `engine/strata`, `.venv`, private `.config` |
-| `~/work/rdna3-data/models/IQ3_S` | link | → `~/.local/share/strata/Strata-data/models/IQ3_S` |
-| `~/work/rdna3-data/packs/iq3_s` | 48 GB | `experts.bin` (byte copy of the GGUF experts, read with O_DIRECT) + dense pack |
-| `~/work/rdna3-data/mtp` | 6.5 GB | MTP draft head |
-| `~/work/rdna3-serve.log`, `~/work/rdna3-bench/` | small | engine log, benchmark output |
+```
+~/work/
+├── rdna3/                     the fork, everything in one place
+│   ├── strata-rdna3.sh        this repo's launcher
+│   ├── engine/                source pinned at 6c2cd28, engine/strata binary, .venv, private .config  (~1 GB)
+│   ├── data/
+│   │   ├── models/IQ3_S  ->   ~/.local/share/strata/Strata-data/models/IQ3_S  (symlink, 82 GB not copied)
+│   │   ├── packs/iq3_s/       experts.bin (byte copy of the GGUF experts, read with O_DIRECT) + dense pack  (48 GB)
+│   │   └── mtp/               MTP draft head  (6.5 GB)
+│   ├── logs/                  setup.log, serve.log, serve.out, bench.log
+│   └── bench/                 bench.py output (per-run config, engine log, results)
+├── llama.cpp/                 Vulkan (build/) + ROCm (build-rocm/) experiments, logs/  (~1 GB, rm -rf to drop)
+└── strata/                    stock Strata launcher (start-strata.sh, clocks2.sh, helpers)
+```
 
 Notes: the fork's `setup.py` moves the models of any Strata install listed in `~/.config/strata`, so the script
 gives it its own `XDG_CONFIG_HOME`. `bench.py` always loads the vision encoder; the script patches it to run
-without. llama.cpp's experiments live in `~/work/vk` (Vulkan + ROCm builds, ~1 GB, `rm -rf ~/work/vk` to remove).
+without.
 
 ## `start-strata.sh`
 

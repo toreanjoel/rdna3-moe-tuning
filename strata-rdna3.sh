@@ -5,15 +5,17 @@ set -euo pipefail
 
 REPO=https://github.com/nicejunjie/Strata-rdna3
 PIN=${PIN:-6c2cd28b96c36b9acba87b4a54829ac5562d1a7c}   # main on 2026-11-20, measured 2026-11-21
-SRC=${SRC:-$HOME/work/strata-rdna3}                    # engine source, build, .venv
-D=${D:-$HOME/work/rdna3-data}                          # models/ packs/ mtp/ for the fork
+R=${R:-$HOME/work/rdna3}                               # everything of the fork lives here
+SRC=${SRC:-$R/engine}                  # engine source, build, .venv
+D=${D:-$R/data}                        # models/ packs/ mtp/ for the fork
 OLD=${OLD:-$HOME/.local/share/strata/Strata-data}      # the stock Strata data folder (models reused, never moved)
 SETUP=${SETUP:-iq3-1gpu}                               # rdna3/configs/<SETUP>.json
 GPUS=${GPUS:-0}                                        # HIP index of the 7900 XTX (the iGPU is 1)
 HOST=${HOST:-127.0.0.1}
 PORT=${PORT:-8080}
-LOG=${LOG:-$HOME/work/rdna3-serve.log}
+LOG=${LOG:-$R/logs/serve.log}
 MODEL=Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf
+mkdir -p "$R/logs"
 
 # setup.py moves the models of every Strata install listed in ~/.config/strata; a private config stops that.
 export XDG_CONFIG_HOME=$SRC/.config
@@ -24,6 +26,7 @@ port_busy() { ss -ltn | grep -q ":$PORT "; }
 stop_all() {
   pkill -TERM -f '[r]dna3/run.py' || true
   pkill -TERM -f '[e]ngine/strata --serve' || true
+  pkill -TERM -f '[s]erve/server.py --engine strata' || true
   command -v strata >/dev/null && strata launch --stop >/dev/null 2>&1 || true
   ~/.local/bin/strata launch --stop >/dev/null 2>&1 || true
   pkill -TERM -f '[s]trata --serve --pack' || true
@@ -52,7 +55,7 @@ install() {
 
   say "toolchain + engine build + MTP head (10-20 min)"
   (cd "$SRC" && ./setup.sh --setup --build --backend hip --family qwen --model IQ3_S --vision none \
-     --data-dir "$D" --no-start --yes)
+     --data-dir "$D" --no-start --yes) 2>&1 | tee "$R/logs/setup.log"
 
   say "expert pack (~47 GB, once)"
   if [ ! -s "$D/packs/iq3_s/experts.bin" ]; then
@@ -113,7 +116,7 @@ bench() {
   stop_all
   cd "$SRC"
   .venv/bin/python rdna3/bench.py "$SETUP" --data "$D" --gpus "$GPUS" --lengths "${1:-8192,32768}" \
-    --out "$HOME/work/rdna3-bench" 2>&1 | tee "$HOME/work/rdna3-bench.log"
+    --out "$R/bench" 2>&1 | tee "$R/logs/bench.log"
 }
 
 uninstall() {
