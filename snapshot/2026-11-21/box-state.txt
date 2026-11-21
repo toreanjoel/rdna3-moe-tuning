@@ -1,0 +1,145 @@
+strata: strata 0.2.16 (build 0.1.62; python 3.12.15 at /home/bonfire/.local/share/strata/terminal/0.1.62/python/bin/python3.12)
+engine: 0.1.62-linux-x86_64-hip-rx7900
+hipblaslt=1.2.2.70204-93~24.04
+rocm-core=7.2.4.70204-93~24.04
+kernel: 7.0.0-43-generic
+gpu:
+GPU[0]		: Card Series: 		Radeon RX 7900 XTX
+GPU[0]		: Card Model: 		0x744c
+GPU[0]		: Card Vendor: 		Advanced Micro Devices, Inc. [AMD/ATI]
+== OD ==
+OD_SCLK:
+0: 500Mhz
+1: 2300Mhz
+OD_MCLK:
+0: 97Mhz
+1: 1300MHz
+OD_RANGE:
+SCLK:     500Mhz       5000Mhz
+MCLK:      97Mhz       1500Mhz
+VDDGFX_OFFSET:    -450mv          0mv
+OD_VDDGFX_OFFSET:
+-50mV
+power1_cap_W=294
+cpu epp=performance boost=1 gov=powersave
+ulimit soft=12063432 hard=12063432 KB
+free: 92 GiB total, 35 avail
+== files in work/strata ==
+total 44
+drwxrwxr-x 2 bonfire bonfire  4096 Nov 21 14:46 .
+drwxrwxr-x 3 bonfire bonfire  4096 Nov 20 01:20 ..
+-rwxr-xr-x 1 bonfire bonfire  1018 Nov 21 14:43 ab.sh
+-rwxr-xr-x 1 bonfire bonfire  1104 Nov 21 14:46 abx.sh
+-rwxr-xr-x 1 bonfire bonfire  1151 Nov 21 14:46 clocks2.sh
+-rwxr-xr-x 1 bonfire bonfire  1026 Nov 21 14:39 clocks.sh
+-rwxr-xr-x 1 bonfire bonfire  3506 Nov 21 14:46 decode_probe.py
+-rwxrwxr-x 1 bonfire bonfire 12382 Nov 21 00:52 start-strata.sh
+
+== appended for restore: boot args, sudo, engine pinning ==
+kernel boot args: BOOT_IMAGE=/boot/vmlinuz-7.0.0-43-generic root=UUID=6d47b258-96d4-4a96-94f2-07c5cfcdf31a ro amdgpu.ppfeaturemask=0xffffffff quiet splash vt.handoff=7
+grub (etc/default/grub:10): GRUB_CMDLINE_LINUX_DEFAULT="amdgpu.ppfeaturemask=0xffffffff quiet splash"
+   -> ppfeaturemask is what makes pp_od_clk_voltage exist; without it clocks.sh falls back to amd-smi.
+sudo: user bonfire is in the sudo group, "(ALL : ALL) ALL"; /etc/sudoers.d holds only README,
+   10-gamemode.conf, 25-pw-rlimits.conf -> NO NOPASSWD entry was added, password sudo only.
+engine component dir: 0.1.62-linux-x86_64-hip-rx7900  (variant "rx7900", signed manifest)
+feed check (components/.updates/state.json last_check): control 0.1.62 installed;
+   engine available 0.1.63, engine_installed 0.1.62  -> nothing auto-installed in 2 days.
+
+== end-of-session addendum, 2026-11-21 (verified over key SSH, no sudo) ==
+live server: bash ./start-strata.sh -> strata launch --family qwen --model iq3_s --context 128k
+             --drafting dflash2 --mtp off -> engine 0.1.62-linux-x86_64-hip-rx7900 (up 2h27m)
+start-mtp.sh: deleted from ~/work/strata (only the temporary MTP launcher; no systemd unit existed)
+~/work/strata now holds exactly the 11 files in box-hashes.txt
+engine Max locked memory: 12352954368 bytes  -> R1 NOT applied to the server
+fresh login shell: ulimit -Sl unlimited (limits.d file works for shells only)
+/etc/security/limits.d/60-strata-memlock.conf: present, added by me, remove with sudo rm
+/etc/systemd/system/user@.service.d/: does NOT exist yet -> the real R1 fix is still outstanding
+OD/clock read-back needs root (pp_od_clk_voltage is not world-readable); last root read was
+   OD_SCLK 2300 / OD_MCLK 1300 / OD_VDDGFX_OFFSET -50 mV / power1_cap 294 W, unchanged.
+NOT inside the 200 W rule: MAX_SCLK is still 2300, prompt reading peaks 262 W.
+
+== restated ceiling + ladder kit, 2026-11-21 late ==
+ceiling is 280 W (not 200 W), and SCLK must never be maxxed: maxxed core clock is what makes the
+coil whine. s2300/m1300/vo-50 therefore stays: prompt-read peak 262 W fits, decode 176-183 W.
+added on the box: ~/work/strata/step.sh (reversible ladder driver; no root, never restarts)
+first rollback snapshot: ~/work/strata/rollback/20261121-164734 (launcher, config, launch config)
+config .orig verified unchanged: sha256 4238e80b3d4844a360a6e522f269900e14fc1f05ad07b83d6a04bdd63d1ac2c7
+
+== config cleanup + step.sh fixes, 2026-11-21 end ==
+live launch config (~/.local/state/strata/launch/iq3_s-128k.json) carried MTP leftovers
+  "mtp": true and an extra "--spec-min-p 0.5"; restored from the snapshot copy -> sha256 c4644cdd...
+  (the leftover file is kept as box-config/launch-iq3_s-128k.live-2026-11-21.json, sha f3685cf1...)
+strata-iq3_s.json sha 7e2177b6... and .orig sha 4238e80b... both verified unchanged
+engine pid 68818 survived the cleanup: no restart happened at any point in this stage
+step.sh fixed: setvar used unset $VAR (spec2 failed under set -u); apply memlock now prints
+  `sudo mkdir -p /etc/systemd/system/user@.service.d` before the tee; rollback now also restores the
+  launch config. Verified on the box: apply memlock spec2 -> SPEC=2 in start-step.sh, rollback clean,
+  nothing written under /etc/systemd/system (the sudo tee only ever printed).
+step.sh again: patches now land on a copy only when a step that patches is applied (`apply memlock` alone leaves no start-step.sh); verified on the box, then re-hashed here and in box-hashes.txt
+
+== graph/order/step.sh corrections, 2026-11-21 end ==
+charts in README now match measurements.csv exactly: tok/s-vs-clock is m1300 1000-token only
+(46/52/57/61/68, the 85 at s2500 was m1400 300-token and moved to its own chart); prompt peak
+uncapped = 350 W; the decode-mean-watts chart has no uncapped point (290-311 W was prompt reading).
+one ladder order everywhere (README x2 + `step.sh list`): memlock -> calibrate -> experts ->
+overlap -> spec2 -> update(0.1.63) LAST, never mixed into an A/B.
+step.sh: `apply experts` now patches BOTH strata-iq3_s.json and the live launch config
+  iq3_s-128k.json (each saved as .stepbak); probe passes N to decode_probe too; snapshot dirs are
+  timestamp+PID unique; the rollback baseline (.step-last) is written by `save` or the FIRST apply
+  only. Found by testing: two snapshots in the same second used to share a name and the second one
+  clobbered the baseline with already-patched configs.
+box state after the test: configs restored byte-identical (launch c4644cdd..., model 7e2177b6...),
+  engine pid 68818 never restarted; rollback/ holds audit snapshots, plus two *.stepbak files.
+step.sh gains two more test ids: perlayer = the BARE flag --expert-cache-per-layer (engine_help.txt:224 takes no value; the first attempt appended 4, which could break the launch) and pcie = --pcie-frac 0.35 in both configs (STRATA_PCIE_FRAC_DEFAULT only accepts on/off/old/auto, SETTINGS.md:166 / AMD_HIP.md:422,530; pcie=0.15 overrides). Both flags are now written by one shared flags() patcher; tested on the box with apply experts perlayer pcie=0.15, rollback clean (c4644cdd / 7e2177b6). Ladder order in README updated to match `step.sh list`.
+
+== memlock without a service, 2026-11-21 ==
+user's terminal shows ulimit -l 12063432 because it predates limits.d/60-strata-memlock.conf; a NEW
+login reads unlimited (verified over SSH), so no systemd drop-in / no service is needed at all.
+guard added to ~/work/strata/start-strata.sh by tools/add-memlock-guard.sh (idempotent): warns when
+the launching shell still has the old cap, else runs `ulimit -l unlimited`. Verified both branches.
+launcher sha now 5640016a...; pristine copy start-strata.sh.pre-memlock = cfc05cfe... (unchanged);
+patched copy archived as box-config/start-strata.sh.memlock-guard. Undo: cp pre-memlock -> start-strata.sh.
+
+== guard order fixed, 2026-11-21 ==
+the guard now raises first and checks after: `ulimit -l unlimited || true`, then if still capped it
+prints the message and `exit 1` (no 17-min capped load); MEMLOCK_OK=1 ./start-strata.sh loads capped
+on purpose. Verified on the box: capped shell -> rc=1, MEMLOCK_OK=1 and fresh shell -> past the guard
+(127 = `strata` missing in a non-login PATH, i.e. it reached the launch).
+launcher sha a9b6d51f...; box-config/start-strata.sh is this guarded file (the side copy
+start-strata.sh.memlock-guard was removed so there is one launcher copy in the snapshot).
+
+== memlock unlocked the lock problem, 2026-11-21 17:25 ==
+launching outside tmux worked: engine memlock = unlimited, log line "PLE table locked in RAM ... in 1.1 s",
+then "PLE table lock given back: the lock left 13.5 GiB of RAM for the conversation cache, 40.3 GiB without it".
+Measured decode_watts 1000 112 280 -> 67.3 tok/s, mean 173 W p95 178 max 181: the ~6% is NOT there
+because the lock was handed back. New step id `ccache` (--conversation-cache-mib 4096, engine_help.txt:87
+default is sized from free RAM up to 8192) to make the lock stick; applied on the box then rolled back,
+so it is the user's call. tmux was the whole reason the limit never moved: pid 1950 (boot-time server)
+carries the old 12063432 KB and every window inherits it.
+
+== ccache test, 2026-11-21 17:40 ==
+`apply ccache` verified live in the engine (--conversation-cache-mib 4096) but 0.1.62 still logs
+"PLE table lock given back: the lock left 13.5 GiB of RAM ... 40.3 GiB without it" - on 24 GB RAM a
+26.8 GiB PLE table cannot stay locked no matter the conversation-cache budget. Score: 64.9 tok/s
+(mean 175 W, p95 181, max 186) vs 67.3 with memlock unlocked and 68.0 baseline -> WORSE.
+Verdict: R1 is closed as unachievable on this box; run ./step.sh rollback to drop ccache.
+Next test: ./step.sh apply experts (the 68 vs 84 length gap is the only big measured one).
+
+== experts step + RAM correction, 2026-11-21 17:55 ==
+CORRECTION: the box has 92 GB RAM (free -g: total 92, used 55, available 36) - my earlier "24 GB" was wrong.
+So the PLE lock is not RAM-starved in principle; 0.1.62 handed it back at load time (13.5 GiB free then),
+which means R1 could be re-tried when RAM is emptier (close the browser/other loads, then relaunch).
+experts step: live (--expert-cache 12000 --kv-resident 24576), hit rate 96.6% / 94.3% / 96.1% (was 88-92%),
+decode 69.1 tok/s at 1000 tokens (mean 178 W, p95 184, max 187), 300-token probe median 75.8, acc 70%.
+KEEP it: small gain, inside 280 W. Hit rate is no longer the limit at ~96%, so perlayer/pcie have little
+headroom left; the remaining gap to 100 is the engine itself (R8, 0.1.63 kernels).
+
+== R8 engine update done (pin rule lifted by the user), 2026-11-21 18:20 ==
+`strata update` run by the user: engine 0.1.62 -> 0.1.63 (signed feed sequence 129, test-started before
+switching) and Control 0.1.62 -> 0.1.63; strata 0.2.17 build 0.1.63. The 0.1.62-linux-x86_64-hip-rx7900
+component dir is kept and `strata components rollback` returns to it - that is now the engine rollback path,
+replacing the "stay on 0.1.62" pin rule in this README.
+Score on 0.1.63 with the experts step still applied: 71.0 tok/s at 1000 tokens (mean 176 W, p95 182, max 184),
+300-token probe median 74.9, draft acceptance 74%, hit rate 94-96.5%. Session total: 68.0 -> 71.0 (+4.4%).
+0.1.63 still logs "PLE table lock given back" (13.6 GiB free at load) but adds "R4 hit path ON - resident
+experts are computed on the GPU" and "token graph hit path: 9463 resident experts".

@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# strata-rdna3.sh — install, run and benchmark the RDNA3 Strata fork (nicejunjie/Strata-rdna3) on one RX 7900 XTX.
+# Usage: ./strata-rdna3.sh install | serve | stop | status | tune | bench [lengths] | uninstall
+set -euo pipefail
+
+REPO=https://github.com/nicejunjie/Strata-rdna3
+PIN=${PIN:-6c2cd28b96c36b9acba87b4a54829ac5562d1a7c}   # main on 2026-11-20, measured 2026-11-21
+SRC=${SRC:-$HOME/work/strata-rdna3}                    # engine source, build, .venv
+D=${D:-$HOME/work/rdna3-data}                          # models/ packs/ mtp/ for the fork
+OLD=${OLD:-$HOME/.local/share/strata/Strata-data}      # the stock Strata data folder (models reused, never moved)
+SETUP=${SETUP:-iq3-1gpu}                               # rdna3/configs/<SETUP>.json
+GPUS=${GPUS:-0}                                        # HIP index of the 7900 XTX (the iGPU is 1)
+HOST=${HOST:-127.0.0.1}
+PORT=${PORT:-8080}
+LOG=${LOG:-$HOME/work/rdna3-serve.log}
+MODEL=Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf
+
+# setup.py moves the models of every Strata install listed in ~/.config/strata; a private config stops that.
+export XDG_CONFIG_HOME=$SRC/.config
+
+say() { printf '\n== %s\n' "$*"; }
+port_busy() { ss -ltn | grep -q ":$PORT "; }
+
+stop_all() {
+  pkill -TERM -f '[r]dna3/run.py' || true
+  pkill -TERM -f '[e]ngine/strata --serve' || true
+  command -v strata >/dev/null && strata launch --stop >/dev/null 2>&1 || true
+  ~/.local/bin/strata launch --stop >/dev/null 2>&1 || true
+  pkill -TERM -f '[s]trata --serve --pack' || true
+  for _ in $(seq 60); do port_busy || return 0; sleep 1; done
+  echo "port $PORT still busy"; return 1
+}
+
+install() {
+  say "system packages (sudo)"
+  sudo apt install -y build-essential git cmake ninja-build python3-venv
+  [ -d /opt/rocm ] || { echo "ROCm not found in /opt/rocm: install ROCm 7.x first (amdgpu-install --usecase=rocm)"; exit 1; }
+  groups | grep -qw render || echo "warning: $USER is not in the render group (sudo usermod -aG render,video $USER, then log in again)"
+
+  say "source at $PIN"
+  [ -d "$SRC/.git" ] || git clone "$REPO" "$SRC"
+  git -C "$SRC" fetch --depth 1 origin "$PIN" 2>/dev/null || git -C "$SRC" fetch origin
+  git -C "$SRC" checkout -q "$PIN"
+
+  say "model"
+  mkdir -p "$D/models"
+  if [ -e "$OLD/models/IQ3_S/$MODEL" ] && [ ! -e "$D/models/IQ3_S" ]; then
+    ln -sfn "$OLD/models/IQ3_S" "$D/models/IQ3_S"; echo "reusing $OLD/models/IQ3_S (symlink, nothing copied)"
+  elif [ ! -e "$D/models/IQ3_S/$MODEL" ]; then
+    echo "no IQ3_S found: setup will download it (~82 GB) into $D/models/IQ3_S"
+  fi
+
+  say "toolchain + engine build + MTP head (10-20 min)"
+  (cd "$SRC" && ./setup.sh --setup --build --backend hip --family qwen --model IQ3_S --vision none \
+     --data-dir "$D" --no-start --yes)
+
+  say "expert pack (~47 GB, once)"
+  if [ ! -s "$D/packs/iq3_s/experts.bin" ]; then
+    (cd "$SRC" && STRATA_GGUF_PY=$SRC/third_party/llama.cpp/gguf-py .venv/bin/python tools/iq_pack.py \
+       --gguf "$D/models/IQ3_S/$MODEL" --out "$D/packs/iq3_s" --experts-bin)
+  fi
+
+  say "bench.py without the vision encoder"
+  sed -i 's/rdna3_run.config(a.setup, a.data, a.gpus, vision=True)/rdna3_run.config(a.setup, a.data, a.gpus, vision=False)/;
+          s|"--log", str(out / "engine.log")\]|"--log", str(out / "engine.log"), "--no-vision"]|' "$SRC/rdna3/bench.py"
+
+  say "done"; du -sh "$SRC" "$D"/packs "$D"/mtp 2>/dev/null
+}
+
+# GPU/CPU tuning from start-strata.sh (measured 2026-11-21): <=280-294 W, no SCLK max (coil whine), VRAM 1300.
+SCLK=${SCLK:-2300}; MCLK=${MCLK:-1300}; VO=${VO:--50}; WATTS=${WATTS:-294}; EPP=${EPP:-performance}; BOOST=${BOOST:-1}
+
+card() { for c in /sys/class/drm/card*/device; do [ "$(cat "$c/device" 2>/dev/null)" = 0x744c ] && { echo "$c"; return; }; done; }
+
+tune() {
+  local dev od hw want have
+  dev=$(card); [ -n "$dev" ] || { echo "7900 XTX (0x744c) not found"; return 1; }
+  od=$dev/pp_od_clk_voltage; hw=$(ls -d "$dev"/hwmon/hwmon* | head -1)
+  [ -e "$od" ] || { echo "no $od: add amdgpu.ppfeaturemask=0xffffffff to GRUB"; return 1; }
+  want="$SCLK $MCLK $VO $WATTS $EPP $BOOST"
+  have="$(grep -A2 OD_SCLK "$od" | sed -n 's/^1: *\([0-9]*\).*/\1/p') $(grep -A2 OD_MCLK "$od" | sed -n 's/^1: *\([0-9]*\).*/\1/p') \
+$(grep -A1 OD_VDDGFX_OFFSET "$od" | tail -1 | tr -dc '0-9-') $(( $(cat "$hw/power1_cap") / 1000000 )) \
+$(cat /sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference 2>/dev/null) $(cat /sys/devices/system/cpu/cpufreq/boost 2>/dev/null)"
+  if [ "$(echo $have)" = "$want" ]; then echo "tuning already applied: sclk $SCLK mclk $MCLK vo $VO ${WATTS}W epp $EPP boost $BOOST"; return; fi
+  echo "applying sclk $SCLK mclk $MCLK vo $VO ${WATTS}W epp $EPP boost $BOOST (was: $have)"
+  # one sudo shell: separate sudo tee calls lose OD writes on this box
+  sudo bash -c "echo on > $dev/power/control; echo r > $od; echo c > $od
+    echo 's 1 $SCLK' > $od; echo 'm 1 $MCLK' > $od; [ '$VO' = 0 ] || echo 'vo $VO' > $od; echo c > $od
+    echo $(( WATTS * 1000000 )) > $hw/power1_cap
+    for f in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do echo $EPP > \$f; done
+    [ -e /sys/devices/system/cpu/cpufreq/boost ] && echo $BOOST > /sys/devices/system/cpu/cpufreq/boost; true"
+  grep -A2 -E 'OD_SCLK|OD_MCLK|OD_VDDGFX' "$od" | tr '\n' ' '; echo
+}
+
+serve() {
+  [ "${TUNE:-1}" = 1 ] && tune
+  stop_all
+  cd "$SRC"
+  nohup .venv/bin/python rdna3/run.py "$SETUP" --data "$D" --gpus "$GPUS" --no-vision \
+    --host "$HOST" --port "$PORT" --log "$LOG" > "${LOG%.log}.out" 2>&1 &
+  for _ in $(seq 180); do port_busy && break; sleep 1; done
+  port_busy && echo "serving http://$HOST:$PORT/v1 (log $LOG)" || { echo "did not start; see ${LOG%.log}.out"; exit 1; }
+}
+
+status() {
+  port_busy && echo "port $PORT: up" || echo "port $PORT: down"
+  pgrep -af '[e]ngine/strata --serve' | cut -c1-120 || true
+  rocm-smi --showuse --showpower --showmeminfo vram 2>/dev/null | grep -E 'GPU\[0\]' || true
+}
+
+bench() {
+  [ "${TUNE:-1}" = 1 ] && tune
+  stop_all
+  cd "$SRC"
+  .venv/bin/python rdna3/bench.py "$SETUP" --data "$D" --gpus "$GPUS" --lengths "${1:-8192,32768}" \
+    --out "$HOME/work/rdna3-bench" 2>&1 | tee "$HOME/work/rdna3-bench.log"
+}
+
+uninstall() {
+  stop_all
+  echo "removing $SRC and $D (the stock Strata folder $OLD is not touched)"
+  rm -rf "$SRC" "$D"
+}
+
+case "${1:-}" in
+  install) install ;;
+  serve) serve ;;
+  stop) stop_all ;;
+  status) status ;;
+  tune) tune ;;
+  bench) bench "${2:-}" ;;
+  uninstall) uninstall ;;
+  *) sed -n 2,3p "$0"; exit 1 ;;
+esac
