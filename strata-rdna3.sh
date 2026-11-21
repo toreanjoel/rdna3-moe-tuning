@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # strata-rdna3.sh — install, run and benchmark the RDNA3 Strata fork (nicejunjie/Strata-rdna3) on one RX 7900 XTX.
-# Usage: ./strata-rdna3.sh install | serve | stop | status | monitor | speed | tune | patch | bench [lengths] | uninstall
+# Usage: ./strata-rdna3.sh install | serve | stop | status | monitor | speed | quality | tune | patch | bench [lengths] | uninstall
 # Env: FAST CTX HOST PORT SETUP GPUS TUNE SCLK MCLK VO WATTS EPP BOOST, XENV/XARGS (engine overrides), NAME/REPEATS (bench)
 set -euo pipefail
 
@@ -23,8 +23,9 @@ mkdir -p "$R/logs"
 TABLE=${TABLE:-$SRC/tools/hip/gfx1100-hipblaslt-100202.txt}
 # FAST=1: skip a missed expert that every token of a verify window ranks 8th-10th (STRATA_ROUTE_TAIL_SKIP=7).
 # Measured 2026-11-22: decode 101->111 (8K), 103->109 (32K); answers change (top-1 agreement 92.6%, KL 0.050,
-# perplexity of the reference text 4.064->4.041). Off by default: the default gives the engine's exact answers.
-FASTENV=""; [ "${FAST:-0}" = 1 ] && FASTENV="STRATA_ROUTE_TAIL_SKIP=7"
+# perplexity of the reference text 4.064->4.041). On by default; FAST=0 gives the engine's exact answers.
+# ./strata-rdna3.sh quality measures FAST against exact on this box.
+FAST=${FAST:-1}; FASTENV=""; [ "$FAST" = 1 ] && FASTENV="STRATA_ROUTE_TAIL_SKIP=7"
 CTX=${CTX:-131072}                                     # max context (the fork ships 262144)
 export STRATA_X_ENV="STRATA_HIPBLASLT_TUNING=$TABLE $FASTENV ${XENV:-}" STRATA_X_ARGS="--max-context $CTX ${XARGS:-}"
 
@@ -173,6 +174,8 @@ case "${1:-}" in
   tune) tune ;;
   patch) patch_fork ;;
   bench) bench "${2:-}" ;;
+  quality) R=$R SRC=$SRC D=$D SETUP=$SETUP PORT=$PORT FAST=$FAST LAUNCHER="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")" \
+             bash "$(cd "$(dirname "$0")" && pwd)/tools/quality.sh" ;;   # ~1 h: KL + HumanEval, exact vs FAST
   uninstall) uninstall ;;
   *) sed -n 2,3p "$0"; exit 1 ;;
 esac

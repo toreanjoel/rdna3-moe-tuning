@@ -70,6 +70,7 @@ Anthropic messages (Claude Code: `ANTHROPIC_BASE_URL=http://127.0.0.1:8080`) and
 | `stop` / `status` | stop it / port, process, GPU power and VRAM |
 | `monitor` | attach a live view (speed, requests, GPU); `q` detaches, server keeps running |
 | `speed` | follow each request's prompt and generation tok/s from the log |
+| `quality` | ~1 h: FAST vs exact on this box: next-token agreement, KL, perplexity, HumanEval pass@1 |
 | `bench [lengths]` | the fork's benchmark (default `8192,32768`) |
 | `tune` | apply clocks and power only |
 | `uninstall` | remove everything the script created |
@@ -84,7 +85,7 @@ Defaults are the measured best within the card's limits. Override any of them pe
 
 | variable | default | notes |
 |---|---|---|
-| `FAST` | 0 | `1` = skip low-ranked missed experts: decode ~110 tok/s, answers change slightly ([below](#what-was-tried)) |
+| `FAST` | 1 | skip low-ranked missed experts: decode ~110 tok/s, answers change slightly ([below](#what-was-tried)); `0` = exact |
 | `CTX` | 131072 | max context; the fork ships 262144 (128K frees ~1% more expert slots) |
 | `WATTS` | 294 | power cap; the ceiling for this card |
 | `SCLK` | 2300 | core clock max (MHz); higher brings coil whine for ~1 tok/s |
@@ -109,13 +110,13 @@ Defaults are the measured best within the card's limits. Override any of them pe
 | `STRATA_MTP_DRAFT_ALL`, `MTP_QFUSE/MULTICOPY/GR_R8` | within noise | no |
 | `STRATA_MEGAKERNEL=1` | within noise | no |
 | `STRATA_IQ_PREFETCH` 1024 / 4096, `STRATA_CPU_YMM=1` (CPU expert kernels) | within noise | no |
-| `STRATA_ROUTE_TAIL_SKIP=7` (`FAST=1`) | decode 101→111 (8K), 103→109 (32K); top-1 agreement 92.6%, KL 0.050, reference perplexity 4.064→4.041 | opt-in |
+| `STRATA_ROUTE_TAIL_SKIP=7` (`FAST=1`, default) | decode 101→111 (8K), 103→109 (32K); top-1 agreement 92.6%, KL 0.050, reference perplexity 4.064→4.041 | yes |
 | `STRATA_ROUTE_TAIL_SKIP=8` | decode 109 / 106; KL 0.047 | no (tail7 faster, same cost) |
 | `STRATA_ROUTE_RESIDENT=0.5` / `1.0`, `STRATA_ROUTE_PRIOR=0.5` | decode 105–110; KL 0.08–0.09, top-1 ~90% | no |
 | llama.cpp (Vulkan, ROCm) | 4–8× slower generation | no |
 
 Generation sits at ~100–108 tok/s at 8–32K context: each step waits on the ~10% of experts computed on the CPU,
-which is bound by dual-channel DDR5. Left out on purpose: higher clocks or power, expert skipping by default (`FAST=1` turns it on), and 47 GB of reserved huge pages. The next big step is hardware: a second 7900 XTX (the author's
+which is bound by dual-channel DDR5. Left out on purpose: higher clocks or power, and 47 GB of reserved huge pages. The next big step is hardware: a second 7900 XTX (the author's
 runs reach 130–170 tok/s).
 
 ## Repo
