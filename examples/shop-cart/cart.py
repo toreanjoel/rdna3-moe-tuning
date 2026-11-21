@@ -1,5 +1,6 @@
 """A small shopping cart. Has bugs and a missing feature on purpose: see README.md."""
 from dataclasses import dataclass, field
+from typing import Optional
 
 
 @dataclass
@@ -12,7 +13,7 @@ class Item:
 @dataclass
 class Cart:
     items: dict = field(default_factory=dict)
-    coupon: str | None = None
+    coupon: Optional[str] = None
 
     def add(self, sku: str, price_cents: int, qty: int = 1) -> None:
         if qty <= 0:
