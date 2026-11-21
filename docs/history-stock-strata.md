@@ -161,7 +161,7 @@ password, `ssh-copy-id` added your **existing** Mac key to the box:
   256 SHA256:mZuihdmhefkQBGowHt2xCuMeke5oI5M2YdaYuAJP/F8 torean_decloud (ED25519)
   = /Users/toreanjoel/.ssh/id_ed25519.pub (dated Aug 28, your own key, not created for this)
 already there before, still needed:
-  3072 SHA256:GOj6al8zssy2z5gCoWRGiEE0p4WDKbiSLcO9MnV/Uq4 toreanjoel@Toreans-MacBook-Pro.local (RSA)
+  3072 SHA256:GOj6al8zssy2z5gCoWRGiEE0p4WDKbiSLcO9MnV/Uq4 user@laptop (RSA)
 ```
 
 Undo (removes only the ED25519 line, keeps the RSA one; the local key stays because it predates

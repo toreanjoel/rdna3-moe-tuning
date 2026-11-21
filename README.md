@@ -1,22 +1,32 @@
 # rdna3-moe-tuning
 
-Run **Qwen3.8-Flash-Next (IQ3_S, 82 GB MoE)** on a **single RX 7900 XTX (24 GB)** at **100+ tok/s**,
+Run **Qwen3.8-Flash-Next (IQ3_S, 82 GB MoE)** on a **single RX 7900 XTX (24 GB)** at **~110 tok/s**,
 within a 294 W power cap. One script installs, tunes, serves and benchmarks
 [Strata-rdna3](https://github.com/nicejunjie/Strata-rdna3), a gfx1100-tuned fork of the Strata engine.
 
 The model is 3–4× larger than VRAM. The engine keeps the most-used experts in VRAM (~90% hit rate), computes
 the rest on the CPU in parallel, and drafts 4 tokens ahead with an MTP head.
 
+## The box
+
+| part | what |
+|---|---|
+| GPU | AMD Radeon RX 7900 XTX 24 GB (gfx1100), 294 W cap, core ≤2300 MHz, VRAM 1300 MHz, −50 mV |
+| CPU | AMD Ryzen 9 7945HX (16 Zen 4 cores, 2 CCDs, AVX-512) |
+| RAM | 92 GB DDR5-5200, dual channel |
+| OS / stack | Ubuntu 24.04, ROCm 7.2.4 |
+| model | Qwen3.8-Flash-Next GSQ-RCO IQ3_S (78 GB on disk), 128K context, int8 KV |
+
 ## Results
 
-Single user, distinct prompts, 256 generated tokens, median of 5 (RX 7900 XTX, Ryzen 9 7945HX, 92 GB DDR5-5200, ROCm 7.2.4).
+Single user, distinct prompts, 256 generated tokens, median of 5 runs, greedy.
 
 ```mermaid
 xychart-beta
-    title "Generation speed (tok/s)"
-    x-axis ["llama.cpp Vulkan", "llama.cpp ROCm", "Strata (stock)", "Strata-rdna3"]
+    title "Generation speed on this box (tok/s)"
+    x-axis ["llama.cpp Vulkan", "llama.cpp ROCm", "Strata (stock)", "Strata-rdna3", "+ FAST (default)"]
     y-axis "tok/s" 0 --> 120
-    bar [13, 25, 80, 105]
+    bar [13, 25, 80, 103, 110]
 ```
 
 ```mermaid
@@ -27,17 +37,39 @@ xychart-beta
     bar [2000, 3266, 3553]
 ```
 
-| | prompt 8K | prompt 32K | generation |
+| | prompt 8K | prompt 32K | generation 8K / 32K |
 |---|---:|---:|---:|
-| **this repo** | **2,840** | **3,553** | **102–108** |
+| **this repo, `FAST=1` (default)** | **2,860** | **3,555** | **109–111 / 109** |
+| this repo, `FAST=0` (exact answers) | 2,840 | 3,553 | 101 / 103 |
 | fork's shipped config | 2,641 | 3,266 | 103–104 |
 | fork author (9950X3D2, DDR5-6000) | 2,436 | 3,541 | 114–119 |
 | stock Strata 0.1.62 | ~1,900 | ~2,000 | 71–85 |
 | llama.cpp ROCm `-ncmoe 32 -ub 2048 -fa 1` | 1,112 (2K) | — | 25 |
 | llama.cpp Vulkan `-ncmoe 22` | 103 (512) | — | 13 |
 
-Raw numbers: [`measurements.csv`](snapshot/2026-11-21/measurements.csv),
-[`fork-sweeps.txt`](snapshot/2026-11-21/fork-sweeps.txt).
+Real chats are faster than the benchmark because a conversation's earlier prompt is reused: coding-tool sessions
+on this box log 122–137 tok/s generation (`./strata-rdna3.sh speed`).
+
+### Where a generation step's time goes
+
+One step verifies the MTP drafts and keeps ~2.1 tokens in ~20 ms. The GPU is the limit: it waits on the CPU's
+experts for only ~1% of the step, so faster CPU code or more RAM bandwidth would barely help. GPU time per step
+(8K context, `STRATA_DECODE_TIMING=1 STRATA_VERIFY_PROFILE=1`):
+
+```mermaid
+pie title GPU time per step (21.7 ms, profiled)
+    "attention / linear-attention layers" : 7.6
+    "experts in VRAM" : 4.1
+    "hyper-connections" : 3.4
+    "router + shared expert" : 2.8
+    "copy + combine" : 2.0
+    "output head" : 0.7
+    "waits (CPU, copies, gaps)" : 1.1
+```
+
+Raw numbers: [`snapshot/2026-11-21/`](snapshot/2026-11-21/) (stock Strata, llama.cpp, first fork sweeps),
+[`snapshot/2026-11-22/`](snapshot/2026-11-22/) (CPU kernel / routing sweep with quality check, engine-switch
+sweep, profile).
 
 ## Install
 
@@ -50,16 +82,18 @@ git clone https://github.com/toreanjoel/rdna3-moe-tuning && cd rdna3-moe-tuning
 ./strata-rdna3.sh serve      # tune the card, start the server in the background
 ```
 
-The server speaks OpenAI (`/v1/chat/completions`) and Anthropic (`/v1/messages`) on `127.0.0.1:8080`:
+The server speaks OpenAI (`/v1/chat/completions`, `/v1/responses`) and Anthropic (`/v1/messages`) on `127.0.0.1:8080`:
 
 ```bash
 curl -s localhost:8080/v1/chat/completions -H 'Content-Type: application/json' \
-  -d '{"messages":[{"role":"user","content":"hi"}],"max_tokens":64}'
+  -d '{"messages":[{"role":"user","content":"hi"}],"max_tokens":512}'
 ```
 
 Coding tools work against it with tool calls and streaming: OpenAI chat (Cursor, Continue, Cline, Roo, Aider),
 Anthropic messages (Claude Code: `ANTHROPIC_BASE_URL=http://127.0.0.1:8080`) and OpenAI Responses (Codex).
-`python3 tools/api_smoke.py [url]` checks all three (9/9 pass on 2026-11-22).
+`python3 tools/api_smoke.py [url]` checks all three (9/9 pass, 5 runs in a row). The model thinks before it
+answers: give tools a max-tokens of 512 or more. [`examples/shop-cart`](examples/shop-cart) is a small coding
+task to try a tool against it.
 
 ## Commands
 
@@ -71,7 +105,7 @@ Anthropic messages (Claude Code: `ANTHROPIC_BASE_URL=http://127.0.0.1:8080`) and
 | `monitor` | attach a live view (speed, requests, GPU); `q` detaches, server keeps running |
 | `speed` | follow each request's prompt and generation tok/s from the log |
 | `quality` | ~1 h: FAST vs exact on this box: next-token agreement, KL, perplexity, HumanEval pass@1 |
-| `bench [lengths]` | the fork's benchmark (default `8192,32768`) |
+| `bench [lengths]` | the fork's benchmark (default `8192,32768`; `BENCH_TEMP=0.6` for sampled answers) |
 | `tune` | apply clocks and power only |
 | `uninstall` | remove everything the script created |
 
@@ -81,15 +115,15 @@ MTP head), `logs/`, `bench/`.
 ## Settings
 
 Defaults are the measured best within the card's limits. Override any of them per run, for example
-`WATTS=250 ./strata-rdna3.sh serve`.
+`FAST=0 ./strata-rdna3.sh serve`.
 
 | variable | default | notes |
 |---|---|---|
-| `FAST` | 1 | skip low-ranked missed experts: decode ~110 tok/s, answers change slightly ([below](#what-was-tried)); `0` = exact |
+| `FAST` | 1 | skip low-ranked missed experts: +7–10% generation, answers change slightly ([below](#what-was-tried)); `0` = exact |
 | `CTX` | 131072 | max context; the fork ships 262144 (128K frees ~1% more expert slots) |
 | `WATTS` | 294 | power cap; the ceiling for this card |
 | `SCLK` | 2300 | core clock max (MHz); higher brings coil whine for ~1 tok/s |
-| `MCLK` | 1300 | VRAM clock (MHz); generation waits on it |
+| `MCLK` | 1300 | VRAM clock (MHz) |
 | `VO` | -50 | core voltage offset (mV) |
 | `EPP` / `BOOST` | performance / 1 | the CPU computes the experts not cached in VRAM |
 | `TABLE` | hipBLASLt `100202` | matches ROCm 7.2.x: prompts +8% |
@@ -110,20 +144,27 @@ Defaults are the measured best within the card's limits. Override any of them pe
 | `STRATA_MTP_DRAFT_ALL`, `MTP_QFUSE/MULTICOPY/GR_R8` | within noise | no |
 | `STRATA_MEGAKERNEL=1` | within noise | no |
 | `STRATA_IQ_PREFETCH` 1024 / 4096, `STRATA_CPU_YMM=1` (CPU expert kernels) | within noise | no |
-| `STRATA_ROUTE_TAIL_SKIP=7` (`FAST=1`, default) | decode 101→111 (8K), 103→109 (32K); top-1 agreement 92.6%, KL 0.050, reference perplexity 4.064→4.041 | yes |
-| `STRATA_ROUTE_TAIL_SKIP=8` | decode 109 / 106; KL 0.047 | no (tail7 faster, same cost) |
-| `STRATA_ROUTE_RESIDENT=0.5` / `1.0`, `STRATA_ROUTE_PRIOR=0.5` | decode 105–110; KL 0.08–0.09, top-1 ~90% | no |
+| `STRATA_ROUTE_TAIL_SKIP=7` (`FAST=1`, default) | generation 101→111 (8K), 103→109 (32K); top-1 agreement 92.6%, KL 0.050, reference perplexity 4.064→4.041 | yes |
+| `--max-context 131072` | 9,328→9,444 experts in VRAM | yes |
+| `STRATA_ROUTE_TAIL_SKIP=8` | 109 / 106; KL 0.047 | no (7 is faster, same cost) |
+| `STRATA_ROUTE_RESIDENT=0.5` / `1.0`, `STRATA_ROUTE_PRIOR=0.5` | 105–110; KL 0.08–0.09, top-1 ~90% | no |
+| `STRATA_ADAPT_LAG=2 ADAPT_NOWAIT=1 ADAPT_OVERLAP=0` | two A/B pairs: +3% at 8K, −1% at 32K | no (noise) |
+| `STRATA_SPEC_COUPLED=1` (± `GUMBEL`), sampled at T=0.6 | 108/114 → 101–105 | no |
+| gfx1151 decode set (`LANECELL`, `MMVF_ROWS`, `TSUM`, `LFUSE`, `GDN_SPLIT`, `PLE_BATCH`, `EXPERT_V2`) | −2–3% | no |
+| `STRATA_HC_REQ8=1` | 114 / 107, prompts −5% | no |
+| `STRATA_COPY_HIP_PRIO=1`, `--host-core sibling` | −3% / none | no |
+| higher core clock (no SCLK cap) | ~+1 tok/s, coil whine | no |
 | llama.cpp (Vulkan, ROCm) | 4–8× slower generation | no |
 
-Generation sits at ~100–108 tok/s at 8–32K context: each step waits on the ~10% of experts computed on the CPU,
-which is bound by dual-channel DDR5. Left out on purpose: higher clocks or power, and 47 GB of reserved huge pages. The next big step is hardware: a second 7900 XTX (the author's
-runs reach 130–170 tok/s).
+Next: the GPU side of a step ([profile](#where-a-generation-steps-time-goes)). Left out on purpose: higher clocks or
+power, and 47 GB of reserved huge pages (transparent huge pages already back ~52 GB of the expert arena).
 
 ## Repo
 
 | path | what |
 |---|---|
 | `strata-rdna3.sh` | the script |
-| `tools/` | benchmark sweeps behind "What was tried" |
-| `snapshot/2026-11-21/` | measurements and an archive of the earlier stock-Strata setup |
+| `tools/` | benchmark sweeps, quality check (`quality.sh`, `humaneval.py`), API smoke test |
+| `examples/shop-cart/` | a small coding task for trying a tool against the server |
+| `snapshot/<date>/` | raw measurements behind every number here |
 | [`docs/history-stock-strata.md`](docs/history-stock-strata.md) | the stock-Strata investigation (clocks, power, decode ladder) |

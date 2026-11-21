@@ -1,29 +1,29 @@
 == ref2
-reference: /home/bonfire/work/rdna3/bench/quality4/ref.tsv
+reference: ~/work/rdna3/bench/quality4/ref.tsv
 run                                      segment         pos    top1       KL   KL p99     PPL PPL ref
 ref2.tsv                                 all            4995 100.00%  0.00000   0.0000   4.064   4.064
 == tail8
-reference: /home/bonfire/work/rdna3/bench/quality4/ref.tsv
+reference: ~/work/rdna3/bench/quality4/ref.tsv
 run                                      segment         pos    top1       KL   KL p99     PPL PPL ref
 tail8.tsv                                all            4995  92.85%  0.04652   0.6323   4.091   4.064
 == tail7
-reference: /home/bonfire/work/rdna3/bench/quality4/ref.tsv
+reference: ~/work/rdna3/bench/quality4/ref.tsv
 run                                      segment         pos    top1       KL   KL p99     PPL PPL ref
 tail7.tsv                                all            4995  92.63%  0.05021   0.7735   4.041   4.064
 == res05
-reference: /home/bonfire/work/rdna3/bench/quality4/ref.tsv
+reference: ~/work/rdna3/bench/quality4/ref.tsv
 run                                      segment         pos    top1       KL   KL p99     PPL PPL ref
 res05.tsv                                all            4995  89.93%  0.07937   1.0772   4.089   4.064
 == res10
-reference: /home/bonfire/work/rdna3/bench/quality4/ref.tsv
+reference: ~/work/rdna3/bench/quality4/ref.tsv
 run                                      segment         pos    top1       KL   KL p99     PPL PPL ref
 res10.tsv                                all            4995  89.85%  0.08130   1.0030   4.079   4.064
 == prior05
-reference: /home/bonfire/work/rdna3/bench/quality4/ref.tsv
+reference: ~/work/rdna3/bench/quality4/ref.tsv
 run                                      segment         pos    top1       KL   KL p99     PPL PPL ref
 prior05.tsv                              all            4995  90.27%  0.08608   1.1752   4.135   4.064
 == t7res05
-reference: /home/bonfire/work/rdna3/bench/quality4/ref.tsv
+reference: ~/work/rdna3/bench/quality4/ref.tsv
 run                                      segment         pos    top1       KL   KL p99     PPL PPL ref
 t7res05.tsv                              all            4995  90.39%  0.08203   1.1900   4.060   4.064
 quality4 done
