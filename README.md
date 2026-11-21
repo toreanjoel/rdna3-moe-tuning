@@ -85,6 +85,7 @@ Defaults are the measured best within the card's limits. Override any of them pe
 | variable | default | notes |
 |---|---|---|
 | `FAST` | 0 | `1` = skip low-ranked missed experts: decode ~110 tok/s, answers change slightly ([below](#what-was-tried)) |
+| `CTX` | 131072 | max context; the fork ships 262144 (128K frees ~1% more expert slots) |
 | `WATTS` | 294 | power cap; the ceiling for this card |
 | `SCLK` | 2300 | core clock max (MHz); higher brings coil whine for ~1 tok/s |
 | `MCLK` | 1300 | VRAM clock (MHz); generation waits on it |
