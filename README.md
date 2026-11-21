@@ -1,70 +1,98 @@
-# RX 7900 XTX Strata box — script, tuning, state and restore
+# RX 7900 XTX box — how to run it fast
 
-Everything about this box lives in this one file: how `start-strata.sh` works, the tuning
-notes, the 2026-11-21 decode investigation (findings + the R1–R8 step ladder), and how to
-get the machine back to the state measured here (`snapshot/2026-11-21/`).
+Current: **`strata-rdna3.sh`** (the RDNA3 Strata fork) — install, serve, tune, bench, all in one script; numbers,
+defaults and what was tried are in the first section. Everything after "History" is the earlier stock-Strata
+setup and the 2026-11-21 investigation, kept for reference (`snapshot/2026-11-21/`).
 
-Contents: **start-strata.sh** (Usage · Requirements · Settings · What it does · Monitoring ·
-Tuning order · Gotchas) then **Session state and restore — 2026-11-21** (what is running ·
-installations and the SSH key added · settings to undo · config restore · engine pin ·
-measurements and the trap · free wins · the ladder · power verdict).
+## How to run this card: `strata-rdna3.sh` (current)
 
-## Recommended: the RDNA3 fork (`strata-rdna3.sh`)
+One script, one way: pull this repo, copy `strata-rdna3.sh` to the box, `install` once, `serve`.
+It runs [nicejunjie/Strata-rdna3](https://github.com/nicejunjie/Strata-rdna3), an MIT fork of Strata with gfx1100
+HIP kernels (WMMA prompt attention, RDNA decode kernels, MTP drafting), pinned at `6c2cd28`.
 
-[nicejunjie/Strata-rdna3](https://github.com/nicejunjie/Strata-rdna3) is an MIT fork of Strata with gfx1100
-HIP kernels (WMMA prompt attention, RDNA decode kernels, megakernel, MTP drafting). Same model, same card,
-measured 2026-11-21 on this box (Ryzen 9 7945HX, 92 GB RAM, ROCm 7.2, Ubuntu 24.04), `bench.py`, median of 3:
+```bash
+scp strata-rdna3.sh bonfire@10.0.0.51:work/rdna3/     # or git clone this repo on the box
+ssh -t bonfire@10.0.0.51
+~/work/rdna3/strata-rdna3.sh install   # once: apt deps (sudo), clone + build for gfx1100, MTP head, 47 GB expert pack
+~/work/rdna3/strata-rdna3.sh serve     # tune card + serve http://127.0.0.1:8080/v1 (OpenAI) and /v1/messages (Anthropic)
+~/work/rdna3/strata-rdna3.sh status | stop | tune | bench | uninstall
+```
+
+`serve` runs in the background (nohup) and survives logout; no tmux needed. Test:
+`curl -s localhost:8080/v1/chat/completions -H 'Content-Type: application/json' -d '{"messages":[{"role":"user","content":"hi"}],"max_tokens":64}'`
+
+### Numbers (this box: RX 7900 XTX, Ryzen 9 7945HX, 92 GB DDR5-5200, ROCm 7.2.4, Ubuntu 24.04)
+
+`bench.py`, distinct prompts, 256 generated tokens, median of 5 (2026-11-21):
 
 | server | prompt 8K | prompt 32K | generation |
 |---|---|---|---|
-| stock Strata 0.1.62 (`start-strata.sh`, below) | ~1,900 | ~2,000 | 71–85 tok/s |
-| **Strata-rdna3 `iq3-1gpu`** | **2,643** | **3,270** | **100–101 tok/s** |
+| **`strata-rdna3.sh serve` (defaults)** | **2,840** | **3,553** | **102–108 tok/s** |
+| same, shipped GEMM table (rejected by ROCm 7.2.4) | 2,641 | 3,266 | 103–104 tok/s |
 | fork author's reference (9950X3D2, DDR5-6000) | 2,436 | 3,541 | 114–119 tok/s |
+| stock Strata 0.1.62 (history, below) | ~1,900 | ~2,000 | 71–85 tok/s |
 | llama.cpp ROCm, `-ncmoe 32 -ub 2048 -fa 1` | 1,112 (2K) | — | 25 tok/s |
 | llama.cpp Vulkan, `-ncmoe 22` | 103 (512) | — | 13 tok/s |
 
-Model: `Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S` (2 shards, 82 GB). Install reuses the stock Strata copy via symlink;
-if there is none, setup downloads it.
+### Defaults and limits
+
+| setting | value | why |
+|---|---|---|
+| power cap | 294 W | hard ceiling, never higher |
+| core clock max | 2300 MHz | maxed core = coil whine |
+| VRAM clock | 1300 MHz | generation waits on it |
+| undervolt | -50 mV | same speed, less heat |
+| CPU | EPP `performance`, boost on | the CPU computes the experts not cached in VRAM |
+| GEMM table | `gfx1100-hipblaslt-100202.txt` | matches ROCm 7.2.x; +7.5% (8K) / +8.8% (32K) prompts |
+| engine config | fork's `rdna3/configs/iq3-1gpu.json` | author's production 1-GPU setup |
+
+Clock/power settings reset on reboot; `serve` and `bench` reapply them (sudo asks only if something differs).
+
+Override per run: `HOST PORT SETUP GPUS TUNE SCLK MCLK VO WATTS EPP BOOST TABLE`, engine overrides
+`XENV="K=V ..."` and `XARGS="--flag value ..."`, bench `NAME REPEATS`. Examples:
 
 ```bash
-./strata-rdna3.sh install     # apt deps (sudo), clone at the pinned commit, build for gfx1100, MTP head, 47 GB expert pack
-./strata-rdna3.sh serve       # stops stock Strata, serves http://127.0.0.1:8080/v1 (OpenAI) and /v1/messages (Anthropic)
-./strata-rdna3.sh bench       # 8K + 32K prompts, 3 each; `bench 1024,8192,131072` for others
-./strata-rdna3.sh status | stop | uninstall
-./strata-rdna3.sh tune        # GPU/CPU tuning only (serve and bench run it too; sudo only if something differs)
-HOST=0.0.0.0 ./strata-rdna3.sh serve   # reachable from the LAN
-TUNE=0 ./strata-rdna3.sh serve         # leave clocks alone
-MCLK=1350 WATTS=280 ./strata-rdna3.sh bench   # try other values (SCLK, MCLK, VO, WATTS, EPP, BOOST)
+HOST=0.0.0.0 ~/work/rdna3/strata-rdna3.sh serve                 # reachable from the LAN
+WATTS=250 ~/work/rdna3/strata-rdna3.sh serve                    # quieter
+NAME=try XARGS="--spec 3" REPEATS=5 ~/work/rdna3/strata-rdna3.sh bench   # A/B an engine flag
 ```
 
-Tuning defaults are this box's measured profile: SCLK max 2300 MHz (no maxed core, coil whine), VRAM 1300 MHz,
--50 mV, 294 W cap, CPU EPP `performance`, boost on. They reset on reboot; `serve` reapplies them. The 2,643 / 3,270 /
-100 tok/s row was measured with them on.
+### Tried and rejected (2026-11-21, same bench)
 
-On the box the script lives at `~/work/rdna3/strata-rdna3.sh` (copy it there from this repo). From another
-machine: `ssh -t bonfire@10.0.0.51 '~/work/rdna3/strata-rdna3.sh serve'` (the `-t` lets sudo ask).
+| change | prompt 8K / 32K | generation | verdict |
+|---|---|---|---|
+| `--adapt-swaps 48` / `64` (+GEMM table) | 2,840 / 3,553 | 104.1/101.9, 103.7/107.9 | noise, keep 32 |
+| `STRATA_AUX_CPUS=auto` | 2,648 / 3,271 | 101.9 / 98.3 | no gain |
+| `--pcie-frac 0.15` | 2,652 / 3,269 | 96.8 / 96.0 | slower |
+| `--pool-workers 14` | 2,647 / 3,267 | 101.2 / 100.7 | no gain |
 
-Requires ROCm 7.x in `/opt/rocm` and your user in the `render`/`video` groups. Box layout (`R=` moves the root;
-`uninstall` removes `~/work/rdna3` only, the stock Strata folder is never touched):
+Not tried, by choice: higher clocks or power (limits above), RAM 5600 (board won't run it), `STRATA_ROUTE_TAIL_SKIP`
+(+6–15% generation but changes outputs), 2 MiB huge pages (reserves 47 GB permanently, est. 0–5%),
+`STRATA_MEGAKERNEL` (author measured 0 gain on 1 GPU). Next real step up: a second 7900 XTX (author: 130–170 tok/s).
+
+### Box layout
 
 ```
-~/work/
-├── rdna3/                     the fork, everything in one place
-│   ├── strata-rdna3.sh        this repo's launcher
-│   ├── engine/                source pinned at 6c2cd28, engine/strata binary, .venv, private .config  (~1 GB)
-│   ├── data/
-│   │   ├── models/IQ3_S/      the GGUF shards (82 GB; moved here from stock Strata, which install still links if present)
-│   │   ├── packs/iq3_s/       experts.bin (byte copy of the GGUF experts, read with O_DIRECT) + dense pack  (48 GB)
-│   │   └── mtp/               MTP draft head  (6.5 GB)
-│   ├── logs/                  setup.log, serve.log, serve.out, bench.log
-│   └── bench/                 bench.py output (per-run config, engine log, results)
-├── llama.cpp/                 Vulkan (build/) + ROCm (build-rocm/) experiments, logs/  (~1 GB, rm -rf to drop)
-└── strata/                    stock Strata launcher (start-strata.sh, clocks2.sh, helpers)
+~/work/rdna3/                  everything; `uninstall` removes it
+├── strata-rdna3.sh            this repo's script
+├── engine/                    fork source at 6c2cd28, engine/strata, .venv, private .config (~1 GB)
+├── data/
+│   ├── models/IQ3_S/          Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S, 2 shards (82 GB; downloaded by install if missing)
+│   ├── packs/iq3_s/           experts.bin (byte copy of the GGUF experts, O_DIRECT reads) + dense pack (48 GB)
+│   └── mtp/                   MTP draft head (6.5 GB)
+├── logs/                      setup.log, serve.log, serve.out, bench-<NAME>.log
+└── bench/<NAME>/              bench.py output per run
 ```
 
-Notes: the fork's `setup.py` moves the models of any Strata install listed in `~/.config/strata`, so the script
-gives it its own `XDG_CONFIG_HOME`. `bench.py` always loads the vision encoder; the script patches it to run
-without.
+Local patches the script applies to the fork (`strata-rdna3.sh patch`): `bench.py` runs without the vision encoder,
+and `run.py` reads `XENV`/`XARGS`. The fork's `setup.py` moves models of any Strata install in `~/.config/strata`,
+so the script gives it its own `XDG_CONFIG_HOME`. Requires ROCm 7.x in `/opt/rocm` and the `render`/`video` groups.
+
+# History — stock Strata on this box (removed 2026-11-21)
+
+Everything below is the earlier stock-Strata setup, kept for reference. The box no longer has it
+(`~/.local/share/strata`, `~/work/strata`, llama.cpp removed; old launcher archived in
+`snapshot/2026-11-21/box-work-strata.tar.gz`).
 
 ## `start-strata.sh`
 

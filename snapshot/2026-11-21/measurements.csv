@@ -22,3 +22,5 @@ experts (expert-cache 12000, kv-resident 24576),2026-11-21 17:55,2300,1300,-50,6
 0.1.63 + experts (R8),2026-11-21 18:20,2300,1300,-50,71.0,176,184,0,,0,fits,KEEP: +2.8% over 0.1.62 with experts (69.1) and +4.4% on the session baseline (68.0); 300-token probe 74.9 with 74% acceptance; still hands the PLE lock back; rollback = `strata components rollback`
 strata-rdna3 iq3-1gpu 8K (bench.py),2026-11-21 19:05,,,,101.1,,,2643,,,watts not measured,watts not measured
 strata-rdna3 iq3-1gpu 32K (bench.py),2026-11-21 19:05,,,,100.1,,,3270,,,watts not measured,watts not measured
+strata-rdna3 defaults (GEMM 100202) 8K bench.py r5,2026-11-21 23:20,2300,1300,-50,104.1,,,2840,,,fits 294W cap,
+strata-rdna3 defaults (GEMM 100202) 32K bench.py r5,2026-11-21 23:20,2300,1300,-50,107.9,,,3553,,,fits 294W cap,

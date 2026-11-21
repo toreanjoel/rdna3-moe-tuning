@@ -1,0 +1,45 @@
+== base  XENV=[] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2639    2436   1.08     101.2  119.0   0.85
+   32768      3270    3541   0.92     100.6  114.1   0.88
+all 6 requests passed
+== gemm  XENV=[STRATA_HIPBLASLT_TUNING=/home/bonfire/work/rdna3/engine/tools/hip/gfx1100-hipblaslt-100202.txt] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2830    2436   1.16     101.4  119.0   0.85
+   32768      3552    3541   1.00     105.6  114.1   0.93
+all 6 requests passed
+== aux  XENV=[STRATA_AUX_CPUS=auto] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2648    2436   1.09     101.9  119.0   0.86
+   32768      3271    3541   0.92      98.3  114.1   0.86
+all 6 requests passed
+== pcie15  XENV=[] XARGS=[--pcie-frac 0.15]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2652    2436   1.09      96.8  119.0   0.81
+   32768      3269    3541   0.92      96.0  114.1   0.84
+all 6 requests passed
+== swap48  XENV=[] XARGS=[--adapt-swaps 48]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2645    2436   1.09     104.5  119.0   0.88
+   32768      3268    3541   0.92     106.3  114.1   0.93
+all 6 requests passed
+== pool14  XENV=[] XARGS=[--pool-workers 14]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2647    2436   1.09     101.2  119.0   0.85
+   32768      3267    3541   0.92     100.7  114.1   0.88
+all 6 requests passed
+== base5  XENV=[] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2641    2436   1.08     103.3  119.0   0.87
+   32768      3266    3541   0.92     104.0  114.1   0.91
+all 10 requests passed
+== g_swap48  XENV=[STRATA_HIPBLASLT_TUNING=/home/bonfire/work/rdna3/engine/tools/hip/gfx1100-hipblaslt-100202.txt] XARGS=[--adapt-swaps 48]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2840    2436   1.17     104.1  119.0   0.87
+   32768      3553    3541   1.00     101.9  114.1   0.89
+all 10 requests passed
+== g_swap64  XENV=[STRATA_HIPBLASLT_TUNING=/home/bonfire/work/rdna3/engine/tools/hip/gfx1100-hipblaslt-100202.txt] XARGS=[--adapt-swaps 64]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2840    2436   1.17     103.7  119.0   0.87
+   32768      3550    3541   1.00     107.9  114.1   0.95
+all 10 requests passed

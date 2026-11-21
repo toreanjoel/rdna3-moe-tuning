@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # strata-rdna3.sh — install, run and benchmark the RDNA3 Strata fork (nicejunjie/Strata-rdna3) on one RX 7900 XTX.
-# Usage: ./strata-rdna3.sh install | serve | stop | status | tune | bench [lengths] | uninstall
+# Usage: ./strata-rdna3.sh install | serve | stop | status | tune | patch | bench [lengths] | uninstall
+# Env: HOST PORT SETUP GPUS TUNE SCLK MCLK VO WATTS EPP BOOST, XENV/XARGS (engine overrides), NAME/REPEATS (bench)
 set -euo pipefail
 
 REPO=https://github.com/nicejunjie/Strata-rdna3
@@ -16,6 +17,11 @@ PORT=${PORT:-8080}
 LOG=${LOG:-$R/logs/serve.log}
 MODEL=Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf
 mkdir -p "$R/logs"
+# engine overrides on top of rdna3/configs/$SETUP.json, e.g. XENV="STRATA_AUX_CPUS=auto" XARGS="--pcie-frac 0.15"
+# hipBLASLt table matching ROCm 7.2.x (runtime 100202); the shipped config names 100200, which the engine rejects
+# and falls back to untuned GEMMs. Measured 2026-11-21: prompts 2641->2840 (8K), 3266->3553 (32K); decode unchanged.
+TABLE=${TABLE:-$SRC/tools/hip/gfx1100-hipblaslt-100202.txt}
+export STRATA_X_ENV="STRATA_HIPBLASLT_TUNING=$TABLE ${XENV:-}" STRATA_X_ARGS="${XARGS:-}"
 
 # setup.py moves the models of every Strata install listed in ~/.config/strata; a private config stops that.
 export XDG_CONFIG_HOME=$SRC/.config
@@ -63,11 +69,38 @@ install() {
        --gguf "$D/models/IQ3_S/$MODEL" --out "$D/packs/iq3_s" --experts-bin)
   fi
 
-  say "bench.py without the vision encoder"
+  patch_fork
+  say "done"; du -sh "$SRC" "$D"/packs "$D"/mtp 2>/dev/null
+}
+
+# Local patches to the fork (idempotent): bench.py without vision; run.py takes overrides from XENV / XARGS.
+patch_fork() {
   sed -i 's/rdna3_run.config(a.setup, a.data, a.gpus, vision=True)/rdna3_run.config(a.setup, a.data, a.gpus, vision=False)/;
           s|"--log", str(out / "engine.log")\]|"--log", str(out / "engine.log"), "--no-vision"]|' "$SRC/rdna3/bench.py"
-
-  say "done"; du -sh "$SRC" "$D"/packs "$D"/mtp 2>/dev/null
+  grep -q 'STRATA_X_ENV' "$SRC/rdna3/run.py" && return
+  "$SRC/.venv/bin/python" - "$SRC/rdna3/run.py" <<'PY'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1]); s = p.read_text()
+anchor = '    cfg = fill(cfg, {"@STRATA@": str(ROOT), "@DATA@": str(data)})\n'
+hook = anchor + '''    # local patch (strata-rdna3.sh): STRATA_X_ENV="K=V ..." sets env; STRATA_X_ARGS="--flag v --switch" sets args
+    import shlex
+    for kv in shlex.split(os.environ.get("STRATA_X_ENV", "")):
+        k, _, v = kv.partition("="); cfg["env"][k] = v
+    xa = shlex.split(os.environ.get("STRATA_X_ARGS", "")); i = 0
+    while i < len(xa):
+        f = xa[i]; v = xa[i + 1] if i + 1 < len(xa) and not xa[i + 1].startswith("--") else None
+        if f in cfg["args"]:
+            j = cfg["args"].index(f)
+            if v is not None and j + 1 < len(cfg["args"]) and not cfg["args"][j + 1].startswith("--"): cfg["args"][j + 1] = v
+            elif v is not None: cfg["args"].insert(j + 1, v)
+        else:
+            cfg["args"] += [f] + ([v] if v is not None else [])
+        i += 2 if v is not None else 1
+'''
+assert anchor in s, "run.py changed upstream; patch by hand"
+if "import os" not in s: s = s.replace("import json", "import json\nimport os", 1)
+p.write_text(s.replace(anchor, hook, 1))
+PY
 }
 
 # GPU/CPU tuning from start-strata.sh (measured 2026-11-21): <=280-294 W, no SCLK max (coil whine), VRAM 1300.
@@ -116,7 +149,7 @@ bench() {
   stop_all
   cd "$SRC"
   .venv/bin/python rdna3/bench.py "$SETUP" --data "$D" --gpus "$GPUS" --lengths "${1:-8192,32768}" \
-    --out "$R/bench" 2>&1 | tee "$R/logs/bench.log"
+    --repeats "${REPEATS:-3}" --out "$R/bench/${NAME:-default}" 2>&1 | tee "$R/logs/bench-${NAME:-default}.log"
 }
 
 uninstall() {
@@ -131,6 +164,7 @@ case "${1:-}" in
   stop) stop_all ;;
   status) status ;;
   tune) tune ;;
+  patch) patch_fork ;;
   bench) bench "${2:-}" ;;
   uninstall) uninstall ;;
   *) sed -n 2,3p "$0"; exit 1 ;;
