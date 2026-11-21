@@ -166,7 +166,7 @@ case "${1:-}" in
   install) install ;;
   serve) serve ;;
   stop) stop_all ;;
-  monitor) exec "$SRC/bin/strata" monitor --url "http://127.0.0.1:$PORT" ;;   # live TUI; q detaches, server keeps running
+  monitor) STRATA_PYTHON="$SRC/.venv/bin/python" exec "$SRC/bin/strata" monitor --url "http://127.0.0.1:$PORT" ;;   # live TUI; q detaches, server keeps running
   speed) tail -n "${N:-10}" -F "$LOG" | grep --line-buffered -oE 'prompt [0-9]+ tokens.*tok/s\)|drafts accepted [0-9]+ of [0-9]+' ;;
   status) status ;;
   tune) tune ;;
