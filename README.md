@@ -68,6 +68,8 @@ Anthropic messages (Claude Code: `ANTHROPIC_BASE_URL=http://127.0.0.1:8080`) and
 | `install` | one-time setup (idempotent) |
 | `serve` | apply tuning, (re)start the server; survives logout |
 | `stop` / `status` | stop it / port, process, GPU power and VRAM |
+| `monitor` | attach a live view (speed, requests, GPU); `q` detaches, server keeps running |
+| `speed` | follow each request's prompt and generation tok/s from the log |
 | `bench [lengths]` | the fork's benchmark (default `8192,32768`) |
 | `tune` | apply clocks and power only |
 | `uninstall` | remove everything the script created |

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # strata-rdna3.sh — install, run and benchmark the RDNA3 Strata fork (nicejunjie/Strata-rdna3) on one RX 7900 XTX.
-# Usage: ./strata-rdna3.sh install | serve | stop | status | tune | patch | bench [lengths] | uninstall
+# Usage: ./strata-rdna3.sh install | serve | stop | status | monitor | speed | tune | patch | bench [lengths] | uninstall
 # Env: FAST HOST PORT SETUP GPUS TUNE SCLK MCLK VO WATTS EPP BOOST, XENV/XARGS (engine overrides), NAME/REPEATS (bench)
 set -euo pipefail
 
@@ -166,6 +166,8 @@ case "${1:-}" in
   install) install ;;
   serve) serve ;;
   stop) stop_all ;;
+  monitor) exec "$SRC/bin/strata" monitor --url "http://127.0.0.1:$PORT" ;;   # live TUI; q detaches, server keeps running
+  speed) tail -n "${N:-10}" -F "$LOG" | grep --line-buffered -oE 'prompt [0-9]+ tokens.*tok/s\)|drafts accepted [0-9]+ of [0-9]+' ;;
   status) status ;;
   tune) tune ;;
   patch) patch_fork ;;
