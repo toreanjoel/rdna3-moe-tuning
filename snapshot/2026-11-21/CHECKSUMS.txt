@@ -21,7 +21,7 @@ a679f9e592600444990f35f0cd2641ee02475fd4191b28eb0f96a8f694e70b33  ./docs/strata-
 d92f2d4a8d2378ccd5b0f72e1e1e5483cf09cbfae89b2ae093999b36143eb2df  ./docs/strata-upstream/KV_PREFETCH.md
 9ca7ad9004f203fc1da1710007d29f98b42ed1d81772d5d07166cc89d501d5aa  ./docs/strata-upstream/QWEN36.md
 42fa45f99e0dfd9e9f3982eb9c4311b3f508449bac6bf0ca3748f005519507d1  ./docs/strata-upstream/SETTINGS.md
-cb9c29f89797917bd1fda40a02b3ff166a0d1fde20b4a0e78fc70f882fb3fc7c  ./fork-sweeps.txt
+a83345330d36edcc69f7350acff3017a15725363060cf7e2eed97de3102e0308  ./fork-sweeps.txt
 f7743e362dda4c9d7556fd7568d8786a0a8a07ca128c65a1e4a4c5ef5bc570af  ./measurements.csv
 23db05c094689edb703f2cd242251f329cf0a8b9804066bcebeebefc3cd6dafe  ./start-strata.repo-copy.sh
 014ae6d37862becb5a92b8f4271600c2d2f049aa21f9c85bd9f00ddd0179a30a  ./tools/ab.sh

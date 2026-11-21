@@ -97,9 +97,13 @@ Defaults are the measured best within the card's limits. Override any of them pe
 | `STRATA_AUX_CPUS=auto` | none | no |
 | `--pool-workers 14` | none | no |
 | `--pcie-frac 0.15` | generation −5% | no |
+| `--spec-min-p 0.3`, `--lookup-chain 3` | within noise | no |
+| `STRATA_MTP_DRAFT_ALL`, `MTP_QFUSE/MULTICOPY/GR_R8` | within noise | no |
+| `STRATA_MEGAKERNEL=1` | within noise | no |
 | llama.cpp (Vulkan, ROCm) | 4–8× slower generation | no |
 
-Left out on purpose: higher clocks or power, expert skipping (`STRATA_ROUTE_TAIL_SKIP`, faster but changes
+Generation sits at ~100–108 tok/s at 8–32K context: each step waits on the ~10% of experts computed on the CPU,
+which is bound by dual-channel DDR5. Left out on purpose: higher clocks or power, expert skipping (`STRATA_ROUTE_TAIL_SKIP`, faster but changes
 outputs), and 47 GB of reserved huge pages. The next big step is hardware: a second 7900 XTX (the author's
 runs reach 130–170 tok/s).
 

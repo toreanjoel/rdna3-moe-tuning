@@ -43,3 +43,33 @@ all 10 requests passed
     8192      2840    2436   1.17     103.7  119.0   0.87
    32768      3550    3541   1.00     107.9  114.1   0.95
 all 10 requests passed
+== s3base  XENV=[] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2834    2436   1.16     101.3  119.0   0.85
+   32768      3552    3541   1.00     103.3  114.1   0.91
+all 10 requests passed
+== minp03  XENV=[] XARGS=[--spec-min-p 0.3]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2835    2436   1.16     102.1  119.0   0.86
+   32768      3553    3541   1.00      95.6  114.1   0.84
+all 10 requests passed
+== chain3  XENV=[] XARGS=[--lookup-chain 3]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2837    2436   1.16     105.5  119.0   0.89
+   32768      3550    3541   1.00     100.9  114.1   0.88
+all 10 requests passed
+== draftall  XENV=[STRATA_MTP_DRAFT_ALL=1] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2836    2436   1.16     100.3  119.0   0.84
+   32768      3551    3541   1.00     102.2  114.1   0.90
+all 10 requests passed
+== mtpfuse  XENV=[STRATA_MTP_QFUSE=1 STRATA_MTP_MULTICOPY=1 STRATA_MTP_GR_R8=1] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2837    2436   1.16     106.4  119.0   0.89
+   32768      3550    3541   1.00     101.3  114.1   0.89
+all 10 requests passed
+== mega  XENV=[STRATA_MEGAKERNEL=1] XARGS=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2836    2436   1.16     101.4  119.0   0.85
+   32768      3546    3541   1.00     103.1  114.1   0.90
+all 10 requests passed
