@@ -1,0 +1,26 @@
+[3/3] Linking HIP executable claude_bench
+a rdna_gr q8 T1                                   14.16 us    491.9 GB/s
+a rdna_gr q8 T2                                   17.70 us    393.3 GB/s
+a rdna_gr q8 T3                                   20.30 us    343.0 GB/s
+a rdna_gr q8 T4                                   23.22 us    299.9 GB/s
+a rdna_gr q8 T5                                   26.63 us    261.5 GB/s
+a rdna_gr q8 T6                                   29.11 us    239.2 GB/s
+c rdna_gr q8 T1                                   13.87 us    501.9 GB/s
+c rdna_gr q8 T2                                   16.25 us    428.5 GB/s
+c rdna_gr q8 T3                                   19.70 us    353.4 GB/s
+c rdna_gr q8 T4                                   21.07 us    330.5 GB/s
+c rdna_gr q8 T5                                   25.02 us    278.3 GB/s
+c rdna_gr q8 T6                                   26.75 us    260.3 GB/s
+a rdna_gr q8 T1                                   14.24 us    489.1 GB/s
+a rdna_gr q8 T2                                   17.67 us    394.0 GB/s
+a rdna_gr q8 T3                                   20.29 us    343.1 GB/s
+a rdna_gr q8 T4                                   23.27 us    299.2 GB/s
+a rdna_gr q8 T5                                   26.72 us    260.6 GB/s
+a rdna_gr q8 T6                                   29.17 us    238.7 GB/s
+c rdna_gr q8 T1                                   13.86 us    502.4 GB/s
+c rdna_gr q8 T2                                   16.25 us    428.5 GB/s
+c rdna_gr q8 T3                                   19.82 us    351.3 GB/s
+c rdna_gr q8 T4                                   21.05 us    330.7 GB/s
+c rdna_gr q8 T5                                   25.32 us    275.0 GB/s
+c rdna_gr q8 T6                                   26.95 us    258.4 GB/s
+T1= T2= T3= T4= T5= T6= 

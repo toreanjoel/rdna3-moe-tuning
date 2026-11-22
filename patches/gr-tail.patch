@@ -1,0 +1,250 @@
+diff --git a/src/kernels/cuda/rdna_gr.cu b/src/kernels/cuda/rdna_gr.cu
+index 389036ef..ee32aeee 100644
+--- a/src/kernels/cuda/rdna_gr.cu
++++ b/src/kernels/cuda/rdna_gr.cu
+@@ -14,6 +14,8 @@
+ #include <cstring>
+ #include <thread>
+ #include <chrono>
++#include <vector>
++#include <algorithm>
+ 
+ #ifndef STRATA_GR_WPE
+ #define STRATA_GR_WPE 8
+@@ -286,10 +288,14 @@ __device__ __forceinline__ int dot8i(uint2 w, uint2 a) {
+ // STRATA_GR_INJ_UP=1 (!INJ): the inject rows' slice dots in their own blocks (row group LR / 16, one per slice) with
+ // no LDS - wave w takes (row, token) items w, w + 8, ...; each is the INJ kernel's lane chunks and dot8 order over
+ // R'[c,h] * w_norm (the staging expressions), then wsum. The int8 blocks then need no float copy of the rows.
+-template <int T>
++template <int T, bool RS = false>
+ __device__ __forceinline__ void inject_slice(const RdnaGr& m, int slice) {
+     const int t = threadIdx.x, lane = t & 31, wv = t >> 5, c = slice >> 1, h = slice & 1, e0 = c * N + h * H;
+-    for (int it = wv; it < (PR - LR) * T; it += WV) {
++    // RS (STRATA_GR_TAIL): the trips a wave makes (4T rows over 8 waves) unrolled, so a wave's rows load together
++    constexpr int NIT = RS ? ((PR - LR) * T + WV - 1) / WV : 1;
++#pragma unroll
++    for (int n = 0; n < NIT; ++n)
++    for (int it = wv + n * WV; RS ? (it == wv + n * WV && it < (PR - LR) * T) : it < (PR - LR) * T; it += WV) {
+         const int row = it / T, k = it - row * T;
+         const FusedGrArgs& a = m.a[k];
+         const uint4* w4 = reinterpret_cast<const uint4*>(a.w_inject + (size_t) row * D + e0);
+@@ -319,8 +325,26 @@ __device__ __forceinline__ void inject_slice(const RdnaGr& m, int slice) {
+     }
+ }
+ 
+-template <int T, int RW, bool INJ = true>
+-__device__ __forceinline__ void down_a8_body(const RdnaGr& m, const int bx, const int by) {
++// STRATA_GR_TRACE (bench only): per-block wall-clock stamps of the fused read's phases
++__device__ unsigned long long* g_gr_tr = nullptr;   // [T-1][8]: sums of per-block phase durations, [7] = count
++__device__ __forceinline__ void gr_stamp(unsigned long long* tr, int ph) {
++    if (tr != nullptr && threadIdx.x == 0) tr[200 + blockIdx.x * 8 + ph] = wall_clock64();
++}
++__device__ __forceinline__ void gr_trace_end(unsigned long long* tr, int T) {
++    if (tr == nullptr || threadIdx.x != 0) return;
++    {   // down-pass time (stamp 2 - stamp 0) by block class: row group 0, inject group, other row groups
++        const int NBX = LR / (2 * WV) + 1, bx = blockIdx.x % NBX, cls = bx == 0 ? 0 : bx == NBX - 1 ? 1 : 2;
++        const unsigned long long* hh = tr + 200 + blockIdx.x * 8;
++        atomicAdd(tr + 110 + (T - 1) * 6 + cls, hh[2] - hh[0]); atomicAdd(tr + 110 + (T - 1) * 6 + 3 + cls, 1ull);
++    }
++    if (blockIdx.x >= UB) return;
++    unsigned long long* s = tr + (T - 1) * 8, *h = tr + 200 + blockIdx.x * 8;
++    for (int ph = 1; ph <= 3; ++ph) atomicAdd(s + ph, h[ph] - h[ph - 1]);
++    atomicAdd(s + 4, h[5] - h[3]); atomicAdd(s + 5, h[6] - h[5]); atomicAdd(s + 6, h[7] - h[6]); atomicAdd(s + 7, h[4] - h[7]);
++    atomicAdd(tr + 100 + (T - 1), 1ull);
++}
++template <int T, int RW, bool INJ = true, bool RS = false>
++__device__ __forceinline__ void down_a8_body(const RdnaGr& m, const int bx, const int by, unsigned long long* tr = nullptr) {
+     // !INJ (STRATA_GR_INJ_UP): the 4 BF16 inject rows are rdna_gr_up's extra blocks - no float copy of the rows here
+     __shared__ __align__(16) float xs[INJ ? T : 1][INJ ? H : 4];   // float rows, for the BF16 inject rows
+     __shared__ __align__(16) uint32_t xq[T][H / 4];       // int8 rows
+@@ -329,7 +353,7 @@ __device__ __forceinline__ void down_a8_body(const RdnaGr& m, const int bx, cons
+     const int t = threadIdx.x, lane = t & 31, wv = t >> 5;
+     const int rg = bx, slice = by, c = slice >> 1, h = slice & 1;
+     if constexpr (!INJ) {
+-        if (rg == LR / (RW * WV)) { if (m.a[0].w_inject != nullptr) inject_slice<T>(m, slice); return; }
++        if (rg == LR / (RW * WV)) { if (m.a[0].w_inject != nullptr) inject_slice<T, RS>(m, slice); gr_stamp(tr, 1); return; }
+     }
+     const int8_t* qd = m.a[0].r8_down;
+     const uint16_t* sd = reinterpret_cast<const uint16_t*>(reinterpret_cast<const uint8_t*>(qd) + r8_soff((size_t) LR * D));
+@@ -357,6 +381,35 @@ __device__ __forceinline__ void down_a8_body(const RdnaGr& m, const int bx, cons
+         }
+     }
+     const int e0 = c * N + h * H;   // this slice's first element in D
++    // STRATA_GR_TAIL (RS): stage token by token with the sums-of-squares thread mapping (float4 t and t + TH of each
++    // token), fully unrolled so every token's loads are in flight at once; row group 0 folds its sums of squares in
++    // (the same fmaf chain per thread, the same wsum) instead of a second, serial pass over R
++    if constexpr (RS) {
++#pragma unroll
++        for (int k = 0; k < T; ++k) {
++            const FusedGrArgs& a = m.a[k];
++            const float gw = a.apply ? 2.0f * sigm(a.inj_prev[c] / (float) HC) : 0.0f;
++            float s = 0.0f;
++#pragma unroll
++            for (int u = 0; u < 2; ++u) {
++                const int f = t + TH * u;
++                if (f < H / 4) {
++                    const int i = f * 4;
++                    float4 r = *reinterpret_cast<const float4*>(a.R + e0 + i);
++                    if (a.apply) {
++                        const float4 b = *reinterpret_cast<const float4*>(a.bo_prev + h * H + i);
++                        r.x = fmaf(b.x, gw, r.x); r.y = fmaf(b.y, gw, r.y); r.z = fmaf(b.z, gw, r.z); r.w = fmaf(b.w, gw, r.w);
++                    }
++                    s = fmaf(r.w, r.w, fmaf(r.z, r.z, fmaf(r.y, r.y, fmaf(r.x, r.x, s))));
++                    const float4 g = *reinterpret_cast<const float4*>(a.w_norm + e0 + i);
++                    const float4 v = make_float4(r.x * g.x, r.y * g.y, r.z * g.z, r.w * g.w);
++                    if constexpr (INJ) *reinterpret_cast<float4*>(&xs[k][i]) = v;
++                    quant4(v, &xq[k][i >> 2], &xd[k][i >> 5], (i & 31) == 0);
++                }
++            }
++            if (rg == 0) { const float v = wsum(s); if (lane == 0) sq[wv][k] = v; }
++        }
++    } else {
+     // stage R'[c,h] * w_norm for every token: one flattened (token, float4) loop, loads of several tokens in flight
+ #pragma unroll 4
+     for (int it = t; it < T * (H / 4); it += TH) {
+@@ -391,7 +444,9 @@ __device__ __forceinline__ void down_a8_body(const RdnaGr& m, const int bx, cons
+             if (lane == 0) sq[wv][k] = v;
+         }
+     }
++    }   // !RS
+     __syncthreads();
++    gr_stamp(tr, 1);
+     if (rg == 0 && t < T) {
+         float s = 0.0f;
+         for (int w = 0; w < WV; ++w) s += sq[w][t];
+@@ -465,8 +520,8 @@ __device__ __forceinline__ void q8_tail(const RdnaGr& m, int d0) {
+     if (lane == 0) y->ds = q8_1_ds(d, sum);
+ }
+ 
+-template <int T, bool Q8 = false, bool A8 = false>
+-__device__ __forceinline__ void up_body(const RdnaGr& m, const int bx) {
++template <int T, bool Q8 = false, bool A8 = false, bool RS = false>
++__device__ __forceinline__ void up_body(const RdnaGr& m, const int bx, unsigned long long* tr = nullptr) {
+ 
+     __shared__ __align__(16) uint32_t loq[A8 ? T : 1][LR / 4];
+     __shared__ float lod[A8 ? T : 1][LR / 32];
+@@ -502,12 +557,36 @@ __device__ __forceinline__ void up_body(const RdnaGr& m, const int bx) {
+         if (bx == 0) m.a[k].rs[cs] = rs[k][cs];
+     }
+     __syncthreads();
+-    for (int i = t; i < T * PR; i += TH) {
++    gr_stamp(tr, 5);
++    // RS (STRATA_GR_TAIL): every partial this thread folds is loaded before any is used (one L2 round trip, not one
++    // per loop trip); the same arithmetic, element for element
++    constexpr int NI = RS ? (T * PR + TH - 1) / TH : 1;
++    float pv[NI][2 * HC];
++    if constexpr (RS) {
++#pragma unroll
++        for (int n = 0; n < NI; ++n) {
++            const int i = t + n * TH;
++            if (i < T * PR) {
++                const int k = i / PR, j = i - k * PR;
++                const float* p = m.part + (size_t) k * 2 * HC * PR + j;
++#pragma unroll
++                for (int e = 0; e < 2 * HC; ++e) pv[n][e] = p[e * PR];
++            }
++        }
++    }
++#pragma unroll
++    for (int n = 0; n < NI; ++n)
++    for (int i = t + n * TH; RS ? (i == t + n * TH && i < T * PR) : i < T * PR; i += TH) {
+         const int k = i / PR, j = i - k * PR;
+         const float* p = m.part + (size_t) k * 2 * HC * PR + j;
+         float s = 0.0f;
++        if constexpr (RS) {
++#pragma unroll
++            for (int cc = 0; cc < HC; ++cc) s = fmaf(rs[k][cc], pv[n][2 * cc] + pv[n][2 * cc + 1], s);
++        } else {
+ #pragma unroll
+-        for (int cc = 0; cc < HC; ++cc) s = fmaf(rs[k][cc], p[(2 * cc) * PR] + p[(2 * cc + 1) * PR], s);
++            for (int cc = 0; cc < HC; ++cc) s = fmaf(rs[k][cc], p[(2 * cc) * PR] + p[(2 * cc + 1) * PR], s);
++        }
+         if (j < LR) {
+             const float x = s / (float) HC;
+             lo[k][j] = x / (1.0f + __expf(-x));
+@@ -517,6 +596,7 @@ __device__ __forceinline__ void up_body(const RdnaGr& m, const int bx) {
+         }
+     }
+     __syncthreads();
++    gr_stamp(tr, 6);
+     if constexpr (A8) {   // lo -> int8 per 32 (aligned 8-lane groups of float4)
+         for (int i = t; i < T * (LR / 4); i += TH) {
+             const int k = i / (LR / 4), f = i - k * (LR / 4);
+@@ -525,6 +605,7 @@ __device__ __forceinline__ void up_body(const RdnaGr& m, const int bx) {
+         }
+         __syncthreads();
+     }
++    gr_stamp(tr, 7);
+     float acc[T];
+ #pragma unroll
+     for (int k = 0; k < T; ++k) {
+@@ -596,6 +677,26 @@ __global__ void __launch_bounds__(TH) __attribute__((amdgpu_waves_per_eu(STRATA_
+     grid_barrier(m.bar, gridDim.x);
+     if (b < UB) up_body<T, true, true>(m, b);
+ }
++// STRATA_GR_TAIL=1: the fused read with its serial tail shortened - staging token by token with the sums of squares
++// folded in, the inject rows unrolled, the up pass's partials loaded in one round trip.  Bit-identical to rdna_gr_fused.
++// TRACE (STRATA_GR_TRACE=1, benches): per-phase wall-clock sums, printed at exit
++template <int T, bool TRACE>
++__global__ void __launch_bounds__(TH) __attribute__((amdgpu_waves_per_eu(STRATA_GR_WPE, 16))) rdna_gr_fused_tail(RdnaGr m) {
++    constexpr int NBX = LR / (2 * WV) + 1;
++    const int b = (int) blockIdx.x;
++    unsigned long long* tr = TRACE ? g_gr_tr : nullptr;
++    gr_stamp(tr, 0);
++    down_a8_body<T, 2, false, true>(m, b % NBX, b / NBX, tr);
++    gr_stamp(tr, 2);
++    grid_barrier(m.bar, gridDim.x);
++    gr_stamp(tr, 3);
++    if (b < UB) up_body<T, true, true, true>(m, b, tr);
++    if constexpr (TRACE) {
++        __syncthreads();
++        gr_stamp(tr, 4);
++        gr_trace_end(tr, T);
++    }
++}
+ 
+ __global__ void inj_check(const float* a, const float* b, const float* sa, const float* sb, int T, int apply, int inj, volatile float* rec) {
+     if (threadIdx.x == 0) atomicAdd((int*) rec + 62, 1);
+@@ -636,6 +737,24 @@ static volatile float* inj_rec() {
+     if (!d) cudaHostGetDevicePointer(&d, (void*) h, 0);
+     return (volatile float*) d;
+ }
++struct GrTrace {
++    unsigned long long* d = nullptr;
++    ~GrTrace() {
++        if (!d) return;
++        unsigned long long h[150];
++        cudaDeviceSynchronize();
++        cudaMemcpy(h, d, sizeof h, cudaMemcpyDeviceToHost);
++        int wc = 0; hipDeviceGetAttribute(&wc, hipDeviceAttributeWallClockRate, 0);   // kHz
++        const double us = 1000.0 / (wc > 0 ? wc : 100000);
++        for (int T = 1; T <= 6; ++T) { const unsigned long long* s = h + (T - 1) * 8; const double n = (double) h[100 + T - 1]; if (!n) continue;
++            std::fprintf(stderr, "GRTRACE T%d stage %.2f down %.2f barrier %.2f | up: rs %.2f fold %.2f a8 %.2f dot+out %.2f us\n", T,
++                         s[1] * us / n, s[2] * us / n, s[3] * us / n, s[4] * us / n, s[5] * us / n, s[6] * us / n, s[7] * us / n);
++            const unsigned long long* c = h + 110 + (T - 1) * 6;
++            std::fprintf(stderr, "GRTRACE T%d down-pass by class: rg0 %.2f  inject %.2f  other %.2f us\n", T,
++                         c[0] * us / c[3], c[1] * us / c[4], c[2] * us / c[5]); }
++    }
++};
++static GrTrace g_trace;
+ template <int T>
+ void launch(const RdnaGr& m, cudaStream_t st, unsigned long long* sb, int si) {
+     static const int only = [] { const char* v = std::getenv("STRATA_GR_RDNA_ONLY"); return v ? std::atoi(v) : 0; }();   // bench: 1 down, 2 up
+@@ -647,7 +766,16 @@ void launch(const RdnaGr& m, cudaStream_t st, unsigned long long* sb, int si) {
+             static const bool inj_up = [] { const char* v = std::getenv("STRATA_GR_INJ_UP"); return v && v[0] == '1'; }();
+             static const bool fused = [] { const char* v = std::getenv("STRATA_GR_FUSED"); return v && v[0] == '1'; }();
+             if (inj_up && fused && m.bar != nullptr && sb == nullptr) {   // one launch (the profiler's stamps need two)
+-                rdna_gr_fused<T><<<(LR / (2 * WV) + 1) * 2 * HC, TH, 0, st>>>(m);
++                static const bool tail = [] { const char* v = std::getenv("STRATA_GR_TAIL"); return v && v[0] == '1'; }();
++                static const int trace = [] { const char* v = std::getenv("STRATA_GR_TRACE"); return v ? std::atoi(v) : 0; }();
++                if (trace && g_trace.d == nullptr) {
++                    cudaMalloc(&g_trace.d, (200 + 168 * 8) * 8); cudaMemset(g_trace.d, 0, (200 + 168 * 8) * 8);
++                    cudaMemcpyToSymbol(g_gr_tr, &g_trace.d, sizeof(void*));
++                }
++                const dim3 gb((LR / (2 * WV) + 1) * 2 * HC);
++                if (tail && trace) rdna_gr_fused_tail<T, true><<<gb, TH, 0, st>>>(m);
++                else if (tail) rdna_gr_fused_tail<T, false><<<gb, TH, 0, st>>>(m);
++                else rdna_gr_fused<T><<<(LR / (2 * WV) + 1) * 2 * HC, TH, 0, st>>>(m);
+                 return;
+             }
+             if (inj_up) {   // the inject rows in their own blocks: no float copy of the rows in the int8 blocks

@@ -1,0 +1,25 @@
+== s9base1  XENV=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2850    2436   1.17     108.6  119.0   0.91
+all 3 requests passed
+== s9tail1  XENV=[STRATA_GR_TAIL=1]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2857    2436   1.17     109.3  119.0   0.92
+all 3 requests passed
+== s9base2  XENV=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2854    2436   1.17     109.0  119.0   0.92
+all 3 requests passed
+== s9tail2  XENV=[STRATA_GR_TAIL=1]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2856    2436   1.17     108.9  119.0   0.92
+all 3 requests passed
+== s9base3  XENV=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2852    2436   1.17     109.0  119.0   0.92
+all 3 requests passed
+== s9tail3  XENV=[STRATA_GR_TAIL=1]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2854    2436   1.17     109.4  119.0   0.92
+all 3 requests passed
+sweep9 done

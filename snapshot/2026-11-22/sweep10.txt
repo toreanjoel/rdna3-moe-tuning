@@ -1,0 +1,33 @@
+== s10base1  XENV=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2854    2436   1.17     108.6  119.0   0.91
+all 3 requests passed
+== s10pair1  XENV=[STRATA_RDNA_PAIR=1]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2854    2436   1.17     109.4  119.0   0.92
+all 3 requests passed
+== s10lfuse1  XENV=[STRATA_LFUSE=1]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2855    2436   1.17     108.8  119.0   0.91
+all 3 requests passed
+== s10both1  XENV=[STRATA_RDNA_PAIR=1 STRATA_GR_TAIL=1]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2856    2436   1.17     109.9  119.0   0.92
+all 3 requests passed
+== s10base2  XENV=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2859    2436   1.17     109.0  119.0   0.92
+all 3 requests passed
+== s10pair2  XENV=[STRATA_RDNA_PAIR=1]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2855    2436   1.17     109.4  119.0   0.92
+all 3 requests passed
+== s10lfuse2  XENV=[STRATA_LFUSE=1]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2854    2436   1.17     109.0  119.0   0.92
+all 3 requests passed
+== s10both2  XENV=[STRATA_RDNA_PAIR=1 STRATA_GR_TAIL=1]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2857    2436   1.17     109.9  119.0   0.92
+all 3 requests passed
+sweep10 done

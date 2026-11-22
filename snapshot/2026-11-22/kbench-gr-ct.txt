@@ -1,0 +1,32 @@
+== claude_bench gr 0
+GRTRACE T1 stage 4.79 down 0.35 barrier 1.59 | up: rs 3.36 fold 0.57 a8 0.38 dot+out 0.74 us
+GRTRACE T1 down-pass by class: rg0 5.24  inject 5.09  other 5.15 us
+GRTRACE T2 stage 5.64 down 0.69 barrier 1.55 | up: rs 3.64 fold 0.86 a8 0.40 dot+out 1.30 us
+GRTRACE T2 down-pass by class: rg0 6.47  inject 6.16  other 6.35 us
+GRTRACE T3 stage 6.54 down 0.96 barrier 2.55 | up: rs 3.74 fold 1.06 a8 0.43 dot+out 1.80 us
+GRTRACE T3 down-pass by class: rg0 7.60  inject 8.61  other 7.46 us
+GRTRACE T4 stage 7.37 down 1.33 barrier 1.86 | up: rs 3.87 fold 1.40 a8 0.65 dot+out 2.35 us
+GRTRACE T4 down-pass by class: rg0 8.89  inject 8.52  other 8.73 us
+GRTRACE T5 stage 8.33 down 1.57 barrier 3.32 | up: rs 3.88 fold 1.70 a8 0.76 dot+out 2.73 us
+GRTRACE T5 down-pass by class: rg0 10.02  inject 11.23  other 9.88 us
+GRTRACE T6 stage 9.14 down 1.88 barrier 2.39 | up: rs 3.96 fold 1.95 a8 0.75 dot+out 3.15 us
+GRTRACE T6 down-pass by class: rg0 11.23  inject 11.10  other 11.07 us
+gr_read T1 (13.2MB)                             22.69 us    583.2 GB/s
+rdna_gr T1 (maxabs/maxref 0.00e+00)             22.68 us    583.3 GB/s
+rdna_gr q8 T1                                   15.71 us    443.3 GB/s
+gr_read T2 (13.2MB)                             26.66 us    496.3 GB/s
+rdna_gr T2 (maxabs/maxref 0.00e+00)             26.67 us    496.1 GB/s
+rdna_gr q8 T2                                   17.90 us    389.0 GB/s
+gr_read T3 (13.2MB)                             31.54 us    419.4 GB/s
+rdna_gr T3 (maxabs/maxref 0.00e+00)             31.53 us    419.6 GB/s
+rdna_gr q8 T3                                   21.08 us    330.4 GB/s
+gr_read T4 (13.2MB)                             34.02 us    388.9 GB/s
+rdna_gr T4 (maxabs/maxref 0.00e+00)             34.04 us    388.7 GB/s
+rdna_gr q8 T4                                   23.06 us    302.0 GB/s
+gr_read T5 (13.2MB)                             38.18 us    346.6 GB/s
+rdna_gr T5 (maxabs/maxref 0.00e+00)             38.21 us    346.3 GB/s
+rdna_gr q8 T5                                   26.65 us    261.3 GB/s
+gr_read T6 (13.2MB)                             41.41 us    319.5 GB/s
+rdna_gr T6 (maxabs/maxref 0.00e+00)             41.45 us    319.2 GB/s
+rdna_gr q8 T6                                   27.78 us    250.7 GB/s
+kbench done

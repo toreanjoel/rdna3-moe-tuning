@@ -1,0 +1,20 @@
+== claude_bench gr 0
+gr_read T1 (13.2MB)                             22.61 us    585.0 GB/s
+rdna_gr T1 (maxabs/maxref 0.00e+00)             22.63 us    584.7 GB/s
+rdna_gr q8 T1                                   13.86 us    502.4 GB/s
+gr_read T2 (13.2MB)                             26.65 us    496.4 GB/s
+rdna_gr T2 (maxabs/maxref 0.00e+00)             26.66 us    496.3 GB/s
+rdna_gr q8 T2                                   16.25 us    428.5 GB/s
+gr_read T3 (13.2MB)                             31.52 us    419.7 GB/s
+rdna_gr T3 (maxabs/maxref 0.00e+00)             31.53 us    419.5 GB/s
+rdna_gr q8 T3                                   19.82 us    351.3 GB/s
+gr_read T4 (13.2MB)                             34.01 us    389.0 GB/s
+rdna_gr T4 (maxabs/maxref 0.00e+00)             34.02 us    388.9 GB/s
+rdna_gr q8 T4                                   21.05 us    330.7 GB/s
+gr_read T5 (13.2MB)                             38.21 us    346.3 GB/s
+rdna_gr T5 (maxabs/maxref 0.00e+00)             38.19 us    346.4 GB/s
+rdna_gr q8 T5                                   25.32 us    275.0 GB/s
+gr_read T6 (13.2MB)                             41.44 us    319.3 GB/s
+rdna_gr T6 (maxabs/maxref 0.00e+00)             41.43 us    319.3 GB/s
+rdna_gr q8 T6                                   26.95 us    258.4 GB/s
+kbench done
