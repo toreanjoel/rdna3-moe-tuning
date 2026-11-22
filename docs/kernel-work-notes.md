@@ -130,6 +130,13 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
   on these two prompts; KQ_ALL alone shows 117.8 the other way) - with 2 bench prompts, acceptance noise is +-8%: judge
   non-bitwise changes on verify ms/window, not tok/s. quality25: top-1 100%, KL 0.00000, PPL 4.041 vs 4.040.
 
+## Fused router 2026-11-22 (patches/route-fuse.patch, STRATA_ROUTE_FUSE default on, =0 off; tools/sweep25.sh)
+- Router GEMV (512 bf16 rows) + the shared gate's aux row + top-10 + doorbell publish in one launch: the same GEMV code
+  per block, then the last block to finish (atomic ticket, fences) runs route_row and the publish tail. 48 launches/step fewer.
+- Bitwise: answers identical (4/4 SAME), same windows. Verify 18.22 -> 18.20, 17.52 -> 17.49 ms/window (2 rounds each):
+  ~0.6 us a layer. A removed launch inside the graph is worth well under 1 us here; the gaps are the dependent chain's
+  per-kernel latency, not launch issue. More launch merging only pays where it also shortens the chain.
+
 ## Dense GEMVs at the model's real shapes 2026-11-22 (patches/bench-shapes.patch adds them to claude_bench mmvq; tools/gguf_tensors.py)
 - Per layer: GDN qkv Q6_K 2560->10240, z (attn_gate) Q4_K 2560->6144, ssm_out Q6_K 6144->2560, alpha/beta bf16 2560->48;
   QSA q IQ4_XS 2560->12288, k/v Q6_K 2560->512, output Q4_K 6144->2560; shexp gate/up Q4_K / IQ4_XS 2560->640, down IQ4_NL.

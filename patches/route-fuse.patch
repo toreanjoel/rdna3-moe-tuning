@@ -1,0 +1,209 @@
+diff --git a/include/strata/kernels/native_router.hpp b/include/strata/kernels/native_router.hpp
+index f4dfdbd6..94d488e6 100644
+--- a/include/strata/kernels/native_router.hpp
++++ b/include/strata/kernels/native_router.hpp
+@@ -31,4 +31,11 @@ void native_router_topk(const float* logits, int32_t* ids, float* weights, int n
+ /// `stats` is nullptr or 4 device uint64 counters: tail entries seen, swaps, non-resident before, non-resident after.
+ void native_route_resident(const float* logits, int32_t* ids, float* weights, const int32_t* res_layer, int n_tok, float margin,
+                            int rank_lo, int rank_hi, unsigned long long* stats, void* stream);
++/// rdna3-moe-tuning STRATA_ROUTE_FUSE (default on, =0 off): the router GEMV (+ the shared gate's aux row, 1 x n_in into y_aux) and
++/// native_router_top10_publish_res in one launch (512 experts x top-10, 2..8 tokens); false: not taken, nothing launched
++bool router_fuse_enabled();
++bool native_router_gemv_publish_res(const float* x, int64_t ldx, const uint16_t* w, float* logits, int64_t n_in, int n_tok,
++                                    const uint16_t* w_aux, float* y_aux, int32_t* ids, float* weights, const float* xm,
++                                    const int32_t* d_res, int n_expert, int64_t n, float* x_out, int32_t* ids_out,
++                                    uint32_t* seq, void* stream);
+ }
+diff --git a/src/core/verify.cpp b/src/core/verify.cpp
+index e31e39ed..d796d9e3 100644
+--- a/src/core/verify.cpp
++++ b/src/core/verify.cpp
+@@ -2137,6 +2137,18 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
+             ;
+         const bool rpub = rpub_base && !always_publish_ && !tp_gpu_only_, rpub_all = rpub_base && always_publish_ && !tp_gpu_only_;
+         if (dec_batch && n > 1 && w_router != nullptr && native_router_enabled() && NE == 512 && K == 10) {
++            // rdna3-moe-tuning STRATA_ROUTE_FUSE: the router GEMV, the shared gate row and the top-10 + publish in one launch
++            bool rfused = false;
++            if (w_sgi != nullptr && rpub && !rpub_all) {
++                try {
++                    rfused = strata::kernels::native_router_gemv_publish_res(
++                        mixed_ + tb * N, N, (const uint16_t*) w_router->data, logits_ + tb * NE, N, n, (const uint16_t*) w_sgi->data,
++                        sh_g_ + tb, ids_ + tb * K, w_ + tb * K, xm, hits_.d_res != nullptr ? (hits_.d_res + l * g.n_expert) : nullptr,
++                        (int) g.n_expert, (int64_t) n * N, m_x_ + tb * N, m_ids_ + tb * K, m_seq_, cs);
++                } catch (const std::exception& e) { err = "verify router (fused): " + std::string(e.what()); return false; }
++                if (rfused) sg_ready = true;
++            }
++            if (!rfused)
+             try {
+                 if (w_sgi != nullptr)
+                     sg_ready = bf16_gemv_fp32_mmvf_multi_aux(mixed_ + tb * N, N, (const uint16_t*) w_router->data,
+diff --git a/src/kernels/cuda/native_router.cu b/src/kernels/cuda/native_router.cu
+index d97133e6..98262382 100644
+--- a/src/kernels/cuda/native_router.cu
++++ b/src/kernels/cuda/native_router.cu
+@@ -148,10 +148,9 @@ __global__ void route_multi(const float* __restrict__ logits, int32_t* __restric
+     const float inverse_selected_sum = 1.0f / selected_sum;
+     if (lane < 10) weights[lane] = selected * inverse_selected_sum;
+ }
+-__device__ __forceinline__ void route_row(const float* __restrict__ logits, int32_t* __restrict__ ids,
+-                                          float* __restrict__ weights, int tk) {
++__device__ __forceinline__ void route_row_l(const float* __restrict__ logits, int32_t* __restrict__ ids,
++                                            float* __restrict__ weights, int tk, const int lane) {
+     logits += (size_t) tk * 512; ids += (size_t) tk * 10; weights += (size_t) tk * 10;
+-    const int lane = threadIdx.x;
+     float values[16];
+ #pragma unroll
+     for (int i = 0; i < 16; ++i) values[i] = logits[lane + i * 32];
+@@ -197,16 +196,14 @@ __device__ __forceinline__ void route_row(const float* __restrict__ logits, int3
+     const float inverse_selected_sum = 1.0f / selected_sum;
+     if (lane < 10) weights[lane] = selected * inverse_selected_sum;
+ }
+-// STRATA_ROUTE_PUBLISH: route_multi's rows (one warp per token, the same code) and then doorbell_publish_res for the
+-// window's rows in the same block - one launch instead of two on the path to the CPU experts
+-__launch_bounds__(256, 1)
+-__global__ void route_publish_res(const float* __restrict__ logits, int32_t* __restrict__ ids, float* __restrict__ weights,
+-                                  int n_tok, const float* __restrict__ x, const int32_t* __restrict__ d_res, int n_expert,
+-                                  int n, float* x_out, int32_t* ids_out, uint32_t* seq) {
+-    const int tk = (int) threadIdx.y;
+-    if (tk < n_tok) route_row(logits, ids, weights, tk);
+-    __syncthreads();
+-    const int t = (int) (threadIdx.y * 32 + threadIdx.x), k = n_tok * 10;
++__device__ __forceinline__ void route_row(const float* __restrict__ logits, int32_t* __restrict__ ids,
++                                          float* __restrict__ weights, int tk) {
++    route_row_l(logits, ids, weights, tk, (int) threadIdx.x);
++}
++__device__ __forceinline__ void publish_res_tail(const int t, const int32_t* __restrict__ ids, int n_tok,
++                                                 const float* __restrict__ x, const int32_t* __restrict__ d_res, int n_expert,
++                                                 int n, float* x_out, int32_t* ids_out, uint32_t* seq) {
++    const int k = n_tok * 10;
+     int any_miss = 0;
+     for (int i = t; i < k; i += 256) {
+         const int32_t id = ids[i];
+@@ -230,6 +227,18 @@ __global__ void route_publish_res(const float* __restrict__ logits, int32_t* __r
+ #endif
+     }
+ }
++// STRATA_ROUTE_PUBLISH: route_multi's rows (one warp per token, the same code) and then doorbell_publish_res for the
++// window's rows in the same block - one launch instead of two on the path to the CPU experts
++__launch_bounds__(256, 1)
++__global__ void route_publish_res(const float* __restrict__ logits, int32_t* __restrict__ ids, float* __restrict__ weights,
++                                  int n_tok, const float* __restrict__ x, const int32_t* __restrict__ d_res, int n_expert,
++                                  int n, float* x_out, int32_t* ids_out, uint32_t* seq) {
++    const int tk = (int) threadIdx.y;
++    if (tk < n_tok) route_row(logits, ids, weights, tk);
++    __syncthreads();
++    publish_res_tail((int) (threadIdx.y * 32 + threadIdx.x), ids, n_tok, x, d_res, n_expert, n, x_out, ids_out, seq);
++
++}
+ // STRATA_ROUTE_PUBLISH, the always-publish doorbell (pipelined windows): route_multi's rows, then doorbell_publish's
+ // copies (x, ids and weights, whatever the residency) and the ring increment, in one launch
+ __launch_bounds__(256, 1)
+@@ -454,4 +463,108 @@ void native_router_top10_publish(const float* logits, int32_t* ids, float* weigh
+     const auto error = cudaGetLastError();
+     if (error != cudaSuccess) throw std::runtime_error(cudaGetErrorString(error));
+ }
++namespace {
++// rdna3-moe-tuning STRATA_ROUTE_FUSE: bf16_f32_mmvf_multi_kernel<256, NT, EXACT_T>'s code (native_bf16.cu, HIP: no PDL
++// prefetch) for the router rows + the aux row, then the last block routes (route_row) and publishes (publish_res_tail)
++__device__ unsigned g_rgp_ticket = 0;
++__device__ __forceinline__ float rgp_warp_sum(float value) {
++#pragma unroll
++    for (int offset = 16; offset > 0; offset >>= 1)
++        value += __shfl_xor_sync(0xffffffffu, value, offset, 32);
++    return value;
++}
++__device__ __forceinline__ float rgp_bf16(uint16_t v) { return __uint_as_float(((uint32_t) v) << 16); }
++template <int NT, bool EXACT_T>
++__global__ void __launch_bounds__(256) router_gemv_publish_k(const float* x, int64_t ldx, const uint16_t* __restrict__ w,
++        float* y_, int64_t ldy, int n_in, int n_tok, const uint16_t* __restrict__ w_aux, float* y_aux, int64_t ldy_aux,
++        int n_main, int32_t* ids, float* weights, const float* __restrict__ xm, const int32_t* __restrict__ d_res,
++        int n_expert, int n, float* x_out, int32_t* ids_out, uint32_t* seq) {
++    constexpr int BLOCK_SIZE = 256;
++    const bool aux = (int) blockIdx.x >= n_main;
++    const int orow = aux ? (int) blockIdx.x - n_main : (int) blockIdx.x;
++    float* y = aux ? y_aux : y_;
++    if (aux) ldy = ldy_aux;
++    const int t = threadIdx.x;
++    const uint16_t* row = (aux ? w_aux : w) + (size_t) orow * n_in;
++    const uint32_t* weights2 = reinterpret_cast<const uint32_t*>(row);
++    __shared__ float partials[NT][32];
++    __shared__ int last;
++    if (t < 32) {
++#pragma unroll
++        for (int k = 0; k < NT; ++k) partials[k][t] = 0.0f;
++    }
++    __syncthreads();
++    float acc[NT];
++#pragma unroll
++    for (int k = 0; k < NT; ++k) acc[k] = 0.0f;
++    for (int pair = t; pair < n_in / 2; pair += BLOCK_SIZE) {
++        const uint32_t weight = __ldg(weights2 + pair);
++        const float w0 = rgp_bf16((uint16_t) weight), w1 = rgp_bf16((uint16_t) (weight >> 16));
++#pragma unroll
++        for (int k = 0; k < NT; ++k) {
++            if (EXACT_T || k < n_tok) {
++                const float2 input = __ldg(reinterpret_cast<const float2*>(x + (size_t) k * ldx) + pair);
++                acc[k] = __fmaf_rn(w0, input.x, acc[k]);
++                acc[k] = __fmaf_rn(w1, input.y, acc[k]);
++            }
++        }
++    }
++#pragma unroll
++    for (int k = 0; k < NT; ++k)
++        if (EXACT_T || k < n_tok) acc[k] = rgp_warp_sum(acc[k]);
++    if ((t & 31) == 0)
++#pragma unroll
++        for (int k = 0; k < NT; ++k)
++            if (EXACT_T || k < n_tok) partials[k][t / 32] = acc[k];
++    __syncthreads();
++    if (t < 32)
++#pragma unroll
++        for (int k = 0; k < NT; ++k)
++            if (EXACT_T || k < n_tok) acc[k] = rgp_warp_sum(partials[k][t]);
++    if (t == 0) {
++#pragma unroll
++        for (int k = 0; k < NT; ++k)
++            if (EXACT_T || k < n_tok) y[(size_t) k * ldy + orow] = acc[k];
++        __threadfence();
++        last = atomicAdd(&g_rgp_ticket, 1u) == gridDim.x - 1;
++    }
++    __syncthreads();
++    if (!last) return;
++    __threadfence();   // acquire: every block's logits
++    if (t == 0) g_rgp_ticket = 0;
++    const int tk = t >> 5;
++    if (tk < n_tok) route_row_l(y_, ids, weights, tk, t & 31);
++    __syncthreads();
++    publish_res_tail(t, ids, n_tok, xm, d_res, n_expert, n, x_out, ids_out, seq);
++}
++}  // namespace
++bool router_fuse_enabled() {
++    static const bool on = [] { const char* v = std::getenv("STRATA_ROUTE_FUSE"); return v == nullptr || v[0] != '0'; }();
++    return on;
++}
++bool native_router_gemv_publish_res(const float* x, int64_t ldx, const uint16_t* w, float* logits, int64_t n_in, int n_tok,
++                                    const uint16_t* w_aux, float* y_aux, int32_t* ids, float* weights, const float* xm,
++                                    const int32_t* d_res, int n_expert, int64_t n, float* x_out, int32_t* ids_out,
++                                    uint32_t* seq, void* stream) {
++    // the multi kernel's own conditions at block size 256 (mmvf_block_size(2560..) = 256), 512 router rows + 1 aux row
++    if (!router_fuse_enabled() || n_tok < 2 || n_tok > 8 || n_in <= 0 || (n_in & 1) != 0 || (ldx & 1) != 0 || n_in % 512 != 0 ||
++        n_in > 4096 || !x || !w || !logits || !w_aux || !y_aux || (reinterpret_cast<uintptr_t>(x) & 7u) != 0 || !stream)
++        return false;
++    { const char* r = std::getenv("STRATA_MMVF_ROWS"); if (r && r[0] == '1') return false; }
++    const cudaStream_t st = (cudaStream_t) stream;
++    const dim3 g(512u + 1u);
++#define STRATA_RGP(NT, EX) router_gemv_publish_k<NT, EX><<<g, 256, 0, st>>>(x, ldx, w, logits, 512, (int) n_in, n_tok, w_aux, y_aux, 1, 512, ids, weights, xm, d_res, n_expert, (int) n, x_out, ids_out, seq)
++    switch (n_tok) {
++        case 2: STRATA_RGP(2, true); break;
++        case 3: STRATA_RGP(3, true); break;
++        case 4: STRATA_RGP(4, true); break;
++        case 5: STRATA_RGP(5, true); break;
++        case 6: STRATA_RGP(6, true); break;
++        default: STRATA_RGP(8, false); break;
++    }
++#undef STRATA_RGP
++    const auto error = cudaGetLastError();
++    if (error != cudaSuccess) throw std::runtime_error(cudaGetErrorString(error));
++    return true;
++}
+ }
