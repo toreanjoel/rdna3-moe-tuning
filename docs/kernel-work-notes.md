@@ -98,4 +98,7 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
   `./strata-rdna3.sh perf` = SCLK 3000 / MCLK 1400. sweep19 takes POINTS="sclk:mclk:watts" if this is revisited
   (strata-oc must then allow >294 and be reinstalled as root).
 - Strata 0.2.19 (upstream Niko1221/Strata, 2026-11-22) is NOT what we run: we pin nicejunjie/Strata-rdna3 6c2cd28b.
-  Its "Qwen speed improvements" are untested here.
+  Tested 2026-11-22 (tools/upbench.sh, shadow ROOT, bundle in ~/work/strata/0.1.65, 1.1 GB): upstream defaults
+  90.1/86.9 tok/s, prompt 2603/3419 vs ours 109.2/108.5, 2860/3554. Fork env (STRATA_GR_RDNA etc.) segfaults it in
+  fused_gr_read_multi capture. Its RDNA3 notes: IQ2_XS/NVFP4 LDS decode (em0=8), PF_F16=2 (fork already sets it),
+  moe_p1a FL=3 (prefill). Nothing worth porting for our IQ3_S expert formats. Kept ours.

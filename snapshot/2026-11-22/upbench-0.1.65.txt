@@ -1,0 +1,7 @@
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2860    2436   1.17     109.2  119.0   0.92
+   32768      3554    3541   1.00     108.5  114.1   0.95
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2603    2436   1.07      90.1  119.0   0.76
+   32768      3419    3541   0.97      86.9  114.1   0.76
+{"status": "ok", "max_context"
