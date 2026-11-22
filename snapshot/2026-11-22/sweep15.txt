@@ -1,0 +1,51 @@
+== base1  XARGS=[]
+prompt 0:  144.7 tok/s  384 tokens
+prompt 1:  123.5 tok/s  384 tokens
+prompt 2:  109.6 tok/s  384 tokens
+prompt 3:  120.1 tok/s  384 tokens
+prompt 4:  141.3 tok/s  384 tokens
+prompt 5:  123.3 tok/s  384 tokens
+mean 126.1 tok/s over 12 requests
+== q4p1  XARGS=[--mtp-q4 proj]
+prompt 0:  142.9 tok/s  384 tokens
+prompt 1:  123.7 tok/s  384 tokens
+prompt 2:  107.4 tok/s  384 tokens
+prompt 3:  126.2 tok/s  384 tokens
+prompt 4:  136.3 tok/s  384 tokens
+prompt 5:  125.6 tok/s  384 tokens
+mean 125.0 tok/s over 12 requests
+== p351  XARGS=[--spec-min-p 0.35]
+prompt 0:  142.8 tok/s  384 tokens
+prompt 1:  121.9 tok/s  384 tokens
+prompt 2:  103.8 tok/s  384 tokens
+prompt 3:  120.0 tok/s  384 tokens
+prompt 4:  134.3 tok/s  384 tokens
+prompt 5:  116.6 tok/s  384 tokens
+mean 123.0 tok/s over 12 requests
+== base1  XARGS=[]
+prompt 0:  144.6 tok/s  384 tokens
+prompt 1:  123.1 tok/s  384 tokens
+prompt 2:  109.1 tok/s  384 tokens
+prompt 3:  119.2 tok/s  384 tokens
+prompt 4:  140.4 tok/s  384 tokens
+prompt 5:  122.9 tok/s  384 tokens
+mean 125.8 tok/s over 12 requests
+== q4p1  XARGS=[--mtp-q4 proj]
+prompt 0:  142.8 tok/s  384 tokens
+prompt 1:  124.3 tok/s  384 tokens
+prompt 2:  100.6 tok/s  384 tokens
+prompt 3:  124.2 tok/s  384 tokens
+prompt 4:  140.2 tok/s  384 tokens
+prompt 5:  119.7 tok/s  384 tokens
+mean 124.1 tok/s over 12 requests
+== p351  XARGS=[--spec-min-p 0.35]
+prompt 0:  142.6 tok/s  384 tokens
+prompt 1:  121.8 tok/s  384 tokens
+prompt 2:  103.8 tok/s  384 tokens
+prompt 3:  120.1 tok/s  384 tokens
+prompt 4:  134.2 tok/s  384 tokens
+prompt 5:  116.6 tok/s  384 tokens
+mean 122.9 tok/s over 12 requests
+sweep15 done
+
+[exited with code 0]

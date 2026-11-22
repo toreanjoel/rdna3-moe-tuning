@@ -1,0 +1,29 @@
+== s13base  XARGS=[]  runs 3  accepted 413 of 657 (0.63)  windows/256 118  ms/window 19.6
+all 3 requests passed
+== s13spec3  XARGS=[--spec 3]  runs 3  accepted 384 of 543 (0.71)  windows/256 128  ms/window 18.2
+all 3 requests passed
+== s13spec5  XARGS=[--spec 5]  runs 3  accepted 437 of 727 (0.60)  windows/256 110  ms/window 21.1
+all 3 requests passed
+== s13spec6  XARGS=[--spec 6]  runs 3  accepted 462 of 742 (0.62)  windows/256 102  ms/window 21.8
+all 3 requests passed
+== s13minp35  XARGS=[--spec-min-p 0.35]  runs 3  accepted 446 of 747 (0.60)  windows/256 107  ms/window 20.7
+all 3 requests passed
+== s13minp70  XARGS=[--spec-min-p 0.7]  runs 3  accepted 394 of 492 (0.80)  windows/256 125  ms/window 18.4
+all 3 requests passed
+== s13s6p35  XARGS=[--spec 6 --spec-min-p 0.35]  runs 3  accepted 452 of 1024 (0.44)  windows/256 105  ms/window 23.9
+all 3 requests passed
+== s13q4proj  XARGS=[--mtp-q4 proj]  runs 3  accepted 425 of 613 (0.69)  windows/256 114  ms/window 19.6
+all 3 requests passed
+sweep13 done
+
+== s13mq  XARGS=[--spec-min-p 0.35 --mtp-q4 proj]  runs 3  accepted 446 of 761 (0.59)  windows/256 107  ms/window 21.0
+    8192      2860    2436   1.17     115.3  119.0   0.97
+== s13df  XARGS=[--draft dflash2 --draft-model /home/bonfire/work/rdna3/data/dflash2/qwen3.8-flash-next-dflash2.q8.pack]  runs 3  accepted 413 of 657 (0.63)  windows/256 118  ms/window 19.6
+    8192      2859    2436   1.17     110.9  119.0   0.93
+== s13dfc6  XARGS=[--draft dflash2 --draft-model /home/bonfire/work/rdna3/data/dflash2/qwen3.8-flash-next-dflash2.q8.pack --spec 6 --draft-cap 6]  runs 3  accepted 462 of 742 (0.62)  windows/256 102  ms/window 21.8
+    8192      2861    2436   1.17     114.5  119.0   0.96
+== s13dfc8  XARGS=[--draft dflash2 --draft-model /home/bonfire/work/rdna3/data/dflash2/qwen3.8-flash-next-dflash2.q8.pack --spec 8 --draft-cap 8]  runs 3  accepted 444 of 857 (0.52)  windows/256 108  ms/window 23.6
+    8192      2862    2436   1.17      96.0  119.0   0.81
+== s13dfp3  XARGS=[--draft dflash2 --draft-model /home/bonfire/work/rdna3/data/dflash2/qwen3.8-flash-next-dflash2.q8.pack --spec 6 --draft-cap 6 --draft-conf 0.3]  runs 3  accepted 462 of 742 (0.62)  windows/256 102  ms/window 21.8
+    8192      2852    2436   1.17     114.4  119.0   0.96
+sweep13 done

@@ -161,14 +161,24 @@ Defaults are the measured best within the card's limits. Override any of them pe
 | `STRATA_GR_TAIL=1` ([`patches/gr-tail.patch`](patches/gr-tail.patch): hyper-connection read's serial tail) | 0.3–2.3 µs less per read; with PAIR 108.8 → 109.9, same answers | yes |
 | `STRATA_EXP_AUTO=1` ([`patches/exp-auto.patch`](patches/exp-auto.patch): IQ2_S gate/up fused, Q2_0 down in LDS) | 109.7 → 110.7, same answers | yes |
 | `STRATA_LFUSE=1`; hc read with the up weights preloaded | none | no |
+| Q2_0 expert down on EXPDEC's staged kernel, 2 rows a lane (in `exp-auto.patch`; `STRATA_EXP_AUTO=5` = the LDS kernel) | kernel −10–23%; 110.6 → 110.8, same answers | yes |
+| `STRATA_EXPDEC=1` gate/up (the RDNA4 default) | IQ3_XXS gate/up +7% slower on gfx1100 | no |
+| `--spec 3` / `5` / `6`, `--spec-min-p 0.7` | 108 / 112 / 114.5 / 112 (8K, 3 runs) | no |
+| `--spec-min-p 0.35`, `--mtp-q4 proj` (full-precision draft head) | bench 8K +6% / +5%, 32K −2% / −0.4%; varied chats ([`tools/chatbench.py`](tools/chatbench.py)) 126.0 → 123.0 / 124.6 | no |
+| DFlash2 drafter (`--draft dflash2`, incoai/Qwen3.8-Flash-Next-DFlash2) | CLI only in this build; 2.5–2.7 vs 2.2 tokens a round but 85–97 vs 100 tok/s (wider windows cost more), 0.9 GB VRAM | no |
 
-The three kernel changes are bit-identical to the engine's own kernels (checked on dumps and on the expert
+The kernel changes are bit-identical to the engine's own kernels (checked on dumps and on the expert
 bench's real rows). Measured kernel facts behind them: a decode graph node costs ~2.8 µs (~3.2 ms of a 20 ms
 step); the hyper-connection read is DRAM-bound for its first ~8 µs and then a serial tail; the expert layouts'
 speed depends on the format and on entries per expert (`tools/expbench.sh`). rocprofv3 kernel times are not
 usable inside HIP graphs on ROCm 7.2.4 (graph kernels share end timestamps).
 
-Next: the GPU side of a step ([profile](#where-a-generation-steps-time-goes)). Left out on purpose: higher clocks or
+Drafting is tuned out on this model: the MTP head keeps ~2.2 tokens a step and 37% of steps accept no draft, and
+every setting that drafts more costs more verify time than it keeps on real chats. ~180 tok/s would need ~3.4 tokens
+a step at today's step time, or a much shorter step.
+
+Next: the GPU side of a step ([profile](#where-a-generation-steps-time-goes)), mainly fewer graph nodes (~3 ms of a
+~20 ms step). Left out on purpose: higher clocks or
 power, and 47 GB of reserved huge pages (transparent huge pages already back ~52 GB of the expert arena).
 
 ## Repo
@@ -176,7 +186,7 @@ power, and 47 GB of reserved huge pages (transparent huge pages already back ~52
 | path | what |
 |---|---|
 | `strata-rdna3.sh` | the script |
-| `tools/` | benchmark sweeps, quality check (`quality.sh`, `humaneval.py`), API smoke test |
+| `tools/` | benchmark sweeps, quality check (`quality.sh`, `humaneval.py`), API smoke test, varied-chat speed (`chatbench.py`), CLI generation with any engine flags (`dfcli.py`, `mkprompt.py`) |
 | `examples/shop-cart/` | a small coding task for trying a tool against the server |
 | `patches/` | engine kernel patches, applied on top of the pinned fork by `./strata-rdna3.sh build`, each behind its own switch |
 | `snapshot/<date>/` | raw measurements behind every number here |
