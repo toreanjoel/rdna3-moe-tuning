@@ -1,0 +1,25 @@
+== s21f0  XENV=[STRATA_ABL=0]
+    8192      2712    2436   1.11     109.2  119.0   0.92
+avg T 2.79, 2.10 tokens/window, 19.78 ms/window = verify 17.91 (GPU-reach wait 11.27 + per-layer host 5.46
+avg T 2.74, 2.23 tokens/window, 20.39 ms/window = verify 18.56 (GPU-reach wait 11.87 + per-layer host 5.73
+== s21f1  XENV=[STRATA_ABL=1]
+    8192      2719    2436   1.12     106.2  119.0   0.89
+avg T 2.79, 2.10 tokens/window, 20.39 ms/window = verify 18.49 (GPU-reach wait 11.76 + per-layer host 5.50
+avg T 2.74, 2.23 tokens/window, 20.95 ms/window = verify 19.11 (GPU-reach wait 12.39 + per-layer host 5.73
+== s21f2  XENV=[STRATA_ABL=2]
+    8192      2720    2436   1.12      98.6  119.0   0.83
+avg T 2.79, 2.10 tokens/window, 21.99 ms/window = verify 20.11 (GPU-reach wait 13.38 + per-layer host 5.47
+avg T 2.74, 2.23 tokens/window, 22.57 ms/window = verify 20.74 (GPU-reach wait 13.98 + per-layer host 5.73
+== s21f4  XENV=[STRATA_ABL=4]
+    8192      2715    2436   1.11      98.6  119.0   0.83
+avg T 2.79, 2.10 tokens/window, 22.03 ms/window = verify 20.14 (GPU-reach wait 13.45 + per-layer host 5.48
+avg T 2.74, 2.23 tokens/window, 22.59 ms/window = verify 20.75 (GPU-reach wait 14.05 + per-layer host 5.73
+== s21f8  XENV=[STRATA_ABL=8]
+    8192      2714    2436   1.11     108.2  119.0   0.91
+avg T 2.79, 2.10 tokens/window, 20.01 ms/window = verify 18.12 (GPU-reach wait 11.41 + per-layer host 5.52
+avg T 2.74, 2.23 tokens/window, 20.58 ms/window = verify 18.73 (GPU-reach wait 12.02 + per-layer host 5.75
+== s21f0  XENV=[STRATA_ABL=0]
+    8192      2719    2436   1.12     109.2  119.0   0.92
+avg T 2.79, 2.10 tokens/window, 20.02 ms/window = verify 18.13 (GPU-reach wait 11.10 + per-layer host 5.83
+avg T 2.74, 2.23 tokens/window, 20.38 ms/window = verify 18.54 (GPU-reach wait 11.85 + per-layer host 5.73
+sweep21 done

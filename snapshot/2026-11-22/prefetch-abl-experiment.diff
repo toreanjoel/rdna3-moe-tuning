@@ -1,0 +1,390 @@
+diff --git a/include/strata/core/verify.hpp b/include/strata/core/verify.hpp
+index ae6dedaa..4b3e1ec2 100644
+--- a/include/strata/core/verify.hpp
++++ b/include/strata/core/verify.hpp
+@@ -633,6 +633,11 @@ private:
+     // fork b063c13 (STRATA_SIDE_MIXER=2): a second branch for the GDN gate projection and the QSA queries' chain
+     cudaStream_t side2_ = nullptr;
+     cudaEvent_t pfork_ = nullptr, pjoin_ = nullptr;
++    // rdna3-moe-tuning STRATA_PREFETCH: the MALL prefetch branch (next layer's weights read on a side stream)
++    cudaStream_t pf_cs_ = nullptr;
++    cudaEvent_t pf_fork_ = nullptr, pf_join_ = nullptr;
++    bool pf_used_ = false;
++    void* pf_table_ = nullptr;   // STRATA_PREFETCH=4: the prefetcher's per-layer ranges (device)
+     cudaGraphExec_t commit_exec_ = nullptr;
+ 
+     // mapped staging (host pointer, device alias)
+diff --git a/include/strata/kernels/native_mmvq.hpp b/include/strata/kernels/native_mmvq.hpp
+index 06825ac7..74e8e0b7 100644
+--- a/include/strata/kernels/native_mmvq.hpp
++++ b/include/strata/kernels/native_mmvq.hpp
+@@ -139,6 +139,12 @@ void native_iq4_nl_f32(const void* weights, const float* x, void* scratch_q8_1,
+ bool native_mmvq_supported(int ggml_type) noexcept;
+ /// gfx1100 STRATA_RDNA_Q6K=1: the multi-column Q6_K decode GEMV (rdna_mmvq.cu); false = not taken
+ bool rdna_q6k_enabled();
++/// rdna3-moe-tuning STRATA_PREFETCH: read up to kPrefetchMax device ranges with grid blocks (pure loads: warms the MALL)
++constexpr int kPrefetchMax = 16;
++void mall_prefetch(const void* const* ptrs, const unsigned long long* bytes, int n, int grid, void* stream);
++unsigned long long mall_pf_entry_bytes();
++void mall_pf_fill(void* entry, const void* const* ptrs, const unsigned long long* bytes, int n);
++void mall_prefetcher(const void* table, int n_layers, const unsigned* seq, int dist, int grid, double timeout_ms, void* stream);
+ bool rdna_q6k_mmvq(const void* w, const void* xq, float* y, int n_in, int n_out, int ncols, void* stream);
+ /// the same layout for Q4_K (12), Q5_K (13), IQ4_XS (23); false = type not handled
+ bool rdna_kq_mmvq(int type, const void* w, const void* xq, float* y, int n_in, int n_out, int ncols, void* stream);
+diff --git a/src/core/verify.cpp b/src/core/verify.cpp
+index 6e5804bf..52e02d78 100644
+--- a/src/core/verify.cpp
++++ b/src/core/verify.cpp
+@@ -201,6 +201,48 @@ RouteResidentCfg& route_resident_cfg() {
+     (void) parsed;
+     return c;
+ }
++// rdna3-moe-tuning STRATA_PREFETCH=1: at the start of layer l's experts, a side branch reads layer l+1's dense + HC + router +
++// shared-expert weights (STRATA_PREFETCH_SET bits 1 hc_attn 2 qkv/q,k,v 4 z 8 out 16 hc_ffn 32 router 64 shexp) with
++// STRATA_PREFETCH_GRID blocks (24), so their GEMVs read from the Infinity Cache. =2: layer l's own at pre(l); =3: layer l+2.
++inline int g_prefetch() { static const int m = [] { const char* e = std::getenv("STRATA_PREFETCH"); return e ? std::atoi(e) : 0; }(); return m; }
++inline int g_pf_set() { static const int m = [] { const char* e = std::getenv("STRATA_PREFETCH_SET"); return e ? std::atoi(e) : 127; }(); return m; }
++inline int g_pf_grid() { static const int m = [] { const char* e = std::getenv("STRATA_PREFETCH_GRID"); return e ? std::atoi(e) : 24; }(); return m; }
++inline int g_pf_dist() { static const int m = [] { const char* e = std::getenv("STRATA_PREFETCH_DIST"); return e ? std::atoi(e) : 1; }(); return m; }
++// the ranges prefetch reads for one layer (bits of STRATA_PREFETCH_SET); returns the count
++static int pf_collect(const LayerView& pv, bool qsa, int set, const void** ptr, unsigned long long* by) {
++    int k = 0;
++    auto addn = [&](const char* name) {
++        const WeightRef* w = pv.get(name);
++        if (w && w->native_data && w->native_type >= 0 && k < strata::kernels::kPrefetchMax) {
++            ptr[k] = w->native_data; by[k] = strata::kernels::native_mmvq_weight_bytes(w->native_type, (int) w->ne0, (int) w->ne1); ++k;
++        }
++    };
++    auto addb = [&](const char* name) {
++        const WeightRef* w = pv.get(name);
++        if (w && w->data && k < strata::kernels::kPrefetchMax) { ptr[k] = w->data; by[k] = w->bytes; ++k; }
++    };
++    auto addr8 = [&](const char* name) {
++        const WeightRef* w = pv.get(name);
++        if (w && w->hc_r8 && k < strata::kernels::kPrefetchMax) {
++            const unsigned long long q = (unsigned long long) w->ne0 * (unsigned long long) w->ne1;
++            ptr[k] = w->hc_r8; by[k] = ((q + 255ull) & ~255ull) + q / 16; ++k;
++        }
++    };
++    if (set & 1) { addr8("hc_attn_down.weight"); addr8("hc_attn_up.weight"); addr8("hc_attn_inject.weight"); }
++    if (!qsa) {
++        if (set & 2) addn("attn_qkv.weight");
++        if (set & 4) addn("attn_gate.weight");
++        if (set & 8) addn("ssm_out.weight");
++    } else {
++        if (set & 2) { addn("attn_q.weight"); addn("attn_k.weight"); addn("attn_v.weight"); }
++        if (set & 8) addn("attn_output.weight");
++    }
++    if (set & 16) { addr8("hc_ffn_down.weight"); addr8("hc_ffn_up.weight"); addr8("hc_ffn_inject.weight"); }
++    if (set & 32) addb("ffn_gate_inp.weight");
++    if (set & 64) { addn("ffn_gate_shexp.weight"); addn("ffn_up_shexp.weight"); addn("ffn_down_shexp.weight"); }
++    return k;
++}
++inline int abl_mask_g() { static const int m = [] { const char* e = std::getenv("STRATA_ABL"); return e ? std::atoi(e) : 0; }(); return m; }   // timing ablation (wrong output)
+ inline bool g_lfuse_gate() { static const bool on = [] { const char* v = std::getenv("STRATA_LFUSE_GATE"); return v == nullptr || v[0] != '0'; }(); return on; }
+ inline bool g_lfuse_pair() { static const bool on = [] { const char* v = std::getenv("STRATA_LFUSE_PAIR"); return v == nullptr || v[0] != '0'; }(); return on; }
+ inline bool g_qdedup() { static const bool on = [] { const char* v = std::getenv("STRATA_VERIFY_QDEDUP"); return v != nullptr && std::atoi(v) != 0; }(); return on; }
+@@ -704,7 +746,7 @@ Verifier::~Verifier() {
+     if (copy_) { cudaStreamSynchronize(copy_); cudaStreamDestroy(copy_); }
+     if (side_) cudaStreamDestroy(side_);
+     if (side2_) cudaStreamDestroy(side2_);
+-    for (cudaEvent_t e : {mfork_, mjoin_, pfork_, pjoin_})
++    for (cudaEvent_t e : {mfork_, mjoin_, pfork_, pjoin_, pf_fork_, pf_join_})
+         if (e) cudaEventDestroy(e);
+     if (commit_done_) cudaEventDestroy(commit_done_);
+     if (ev_done_) cudaEventDestroy(ev_done_);
+@@ -1136,6 +1178,13 @@ bool Verifier::init(const WeightTable& wt, const ModelGeometry& g, SessionState&
+         err = "verify: the mixer branch's stream / events could not be created";
+         return false;
+     }
++    if (g_prefetch() > 0 && pf_cs_ == nullptr &&
++        (cudaStreamCreateWithFlags(&pf_cs_, cudaStreamNonBlocking) != cudaSuccess ||
++         cudaEventCreateWithFlags(&pf_fork_, cudaEventDisableTiming) != cudaSuccess ||
++         cudaEventCreateWithFlags(&pf_join_, cudaEventDisableTiming) != cudaSuccess)) {
++        err = "verify: the prefetch branch's stream / events could not be created";
++        return false;
++    }
+     // E-6: a layer whose routed experts are all resident is planned on the device (STRATA_VERIFY_DEVICE_PLAN=1: on;
+     // exact, but neutral on RIBPC 1-2 GPUs: off by default)
+     {
+@@ -1352,10 +1401,52 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
+         }
+     }
+ 
++    auto prefetch_layer = [&](int64_t lp) {   // STRATA_PREFETCH (see g_prefetch)
++        if (pf_cs_ == nullptr || prof_on_ || tp_ || G != 1 || lp >= le_) return;
++        const LayerView pv(wt, lp);
++        const void* ptr[strata::kernels::kPrefetchMax]; unsigned long long by[strata::kernels::kPrefetchMax]; int k = 0;
++        auto addn = [&](const char* name) {
++            const WeightRef* w = pv.get(name);
++            if (w && w->native_data && w->native_type >= 0 && k < strata::kernels::kPrefetchMax) {
++                ptr[k] = w->native_data; by[k] = strata::kernels::native_mmvq_weight_bytes(w->native_type, (int) w->ne0, (int) w->ne1); ++k;
++            }
++        };
++        auto addb = [&](const char* name) {
++            const WeightRef* w = pv.get(name);
++            if (w && w->data && k < strata::kernels::kPrefetchMax) { ptr[k] = w->data; by[k] = w->bytes; ++k; }
++        };
++        auto addr8 = [&](const char* name) {
++            const WeightRef* w = pv.get(name);
++            if (w && w->hc_r8 && k < strata::kernels::kPrefetchMax) {
++                const unsigned long long q = (unsigned long long) w->ne0 * (unsigned long long) w->ne1;
++                ptr[k] = w->hc_r8; by[k] = ((q + 255ull) & ~255ull) + q / 16; ++k;
++            }
++        };
++        const int set = g_pf_set();
++        if (set & 1) { addr8("hc_attn_down.weight"); addr8("hc_attn_up.weight"); addr8("hc_attn_inject.weight"); }
++        if (!is_qsa_layer(g, lp)) {
++            if (set & 2) addn("attn_qkv.weight");
++            if (set & 4) addn("attn_gate.weight");
++            if (set & 8) addn("ssm_out.weight");
++        } else {
++            if (set & 2) { addn("attn_q.weight"); addn("attn_k.weight"); addn("attn_v.weight"); }
++            if (set & 8) addn("attn_output.weight");
++        }
++        if (set & 16) { addr8("hc_ffn_down.weight"); addr8("hc_ffn_up.weight"); addr8("hc_ffn_inject.weight"); }
++        if (set & 32) addb("ffn_gate_inp.weight");
++        if (set & 64) { addn("ffn_gate_shexp.weight"); addn("ffn_up_shexp.weight"); addn("ffn_down_shexp.weight"); }
++        if (k == 0) return;
++        cudaEventRecord(pf_fork_, cs);
++        cudaStreamWaitEvent(pf_cs_, pf_fork_, 0);
++        strata::kernels::mall_prefetch(ptr, by, k, g_pf_grid(), pf_cs_);
++        cudaEventRecord(pf_join_, pf_cs_);
++        pf_used_ = true;
++    };
+     // ---------------------------------------------------------------- pre(l, group): up to the ring
+     auto pre = [&](int64_t l, int grp) -> bool {
+         const int tb = tb_[grp], te = te_[grp], n = te - tb;
+         stamp(l, 0, grp);
++        if (g_prefetch() == 2) prefetch_layer(l);
+         const LayerView v(wt, l);
+         const char* pfx[2] = {"hc_attn_", "hc_ffn_"};
+         const WeightRef *wn[2], *wd[2], *wu[2], *wi[2];
+@@ -1521,6 +1612,7 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
+             il_ready = false;
+         };
+         auto mm = [&](const WeightRef* w, float* out, int n_in, int n_out) {
++          for (int abl_rep = 0; abl_rep < ((abl_mask_g() & 4) ? 2 : 1); ++abl_rep) {   // timing: STRATA_ABL&4 runs every mixer GEMV twice
+             if (w->map_pitch > 0) {   // [claude] a TP alias with a map (STRATA_TP_ALIAS_MAP): the mapped Q8_0 GEMV
+                 strata::kernels::q80_mmvq_mapped(w->native_data, mkmat_of(w), xq_, out, n_in, n_out, n, cs);
+                 return;
+@@ -1534,6 +1626,7 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
+             } else {
+                 native_mmvq(w->native_type, w->native_data, xq_, out, n_in, n_out, n, cs);
+             }
++          }
+         };
+         try {
+             if (!is_qsa_layer(g, l)) {
+@@ -2136,9 +2229,11 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
+                     sg_ready = bf16_gemv_fp32_mmvf_multi_aux(mixed_ + tb * N, N, (const uint16_t*) w_router->data,
+                                                              logits_ + tb * NE, NE, N, NE, n,
+                                                              (const uint16_t*) w_sgi->data, sh_g_ + tb, 1, cs);
+-                if (!sg_ready)
++                for (int abl_rep = 0; abl_rep < ((abl_mask_g() & 8) ? 2 : 1); ++abl_rep) {   // timing: STRATA_ABL&8 the router GEMV twice
++                if (!sg_ready || abl_rep > 0)
+                 bf16_gemv_fp32_mmvf_multi(mixed_ + tb * N, N, (const uint16_t*) w_router->data, logits_ + tb * NE, NE, N,
+                                           NE, n, cs);
++                }
+                 if (rpub_all)
+                     native_router_top10_publish(logits_ + tb * NE, ids_ + tb * K, w_ + tb * K, n, xm, (int64_t) n * N,
+                                                 m_x_ + tb * N, m_ids_ + tb * K, m_w_ + tb * K, m_seq_, cs);
+@@ -2229,6 +2324,8 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
+         bool qdedup = false;   // STRATA_VERIFY_QDEDUP took effect: the experts' q8_1 image of xm is already made
+         // STRATA_TP_SHEXP: the shared expert whole on one card (the other skips it: its `shared_` rows stay zero), or split
+         const bool my_shexp = !tp_ || tp_shexp_split() || (tp_shexp_mode() == 1) == (tpl_.rank == 1);
++        static const int abl_mask = [] { const char* e = std::getenv("STRATA_ABL"); return e ? std::atoi(e) : 0; }();   // timing ablation only (wrong output)
++        for (int abl_rep = 0; abl_rep < ((abl_mask & 1) ? 2 : 1); ++abl_rep)   // timing: STRATA_ABL&1 runs the shared expert twice
+         if (my_shexp) {
+             const WeightRef *wgi = need(v, "ffn_gate_inp_shexp.weight", err), *wsg = need(v, "ffn_gate_shexp.weight", err),
+                             *wsu = need(v, "ffn_up_shexp.weight", err), *wsd = need(v, "ffn_down_shexp.weight", err);
+@@ -2289,6 +2386,8 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
+                               !cvec().covers(g.n_layers - 1);
+     auto post = [&](int64_t l, int grp) -> bool {
+         const int tb = tb_[grp], te = te_[grp], n = te - tb;
++        if (g_prefetch() == 1) prefetch_layer(l + 1);
++        else if (g_prefetch() == 3) prefetch_layer(l + 2);
+         const uint32_t ring = ringof(l, grp);
+         const int64_t cap = (int64_t) n * K, capx = (int64_t) max_t_ * K;
+         int32_t* pl = plan_ + (size_t) grp * (size_t) (plan_i32_ + 16);
+@@ -2306,6 +2405,7 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
+         // plan v0.3 P6: the VRAM groups now; the PCIe groups once the copy engine has landed them in staging.
+         // `gy`: the native launch's groups side by side (0: cap, one block row per possible group).
+         auto grouped = [&](const unsigned long long* gp, const int32_t* gs, const int32_t* gn, int64_t gy, float* dst_buf) {
++          for (int abl_rep = 0; abl_rep < ((abl_mask_g() & 2) ? 2 : 1); ++abl_rep) {   // timing: STRATA_ABL&2 runs the expert GEMVs twice
+             if (lay.native) {
+                 // the layer's GGUF formats (i-quant gate/up, Q2_0 / IQ4_NL down)
+                 const auto& f = lay.fmt[(size_t) l];
+@@ -2317,6 +2417,7 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
+                 moe_grouped_s2(gp, gs, gn, p_dst, p_tok, cap, cap, hit_xq_ + (size_t) tb * (N / 32) * 34,
+                                hit_xs_ + (size_t) tb * (N / 32), hit_scratch_, dst_buf, cs);
+             }
++          }
+         };
+         bool hits_in_combine = false;
+         if (tp_gpu_only_) {   // TP by id: this card's hits into zeroed rows, the combine with its half of the shared expert, the all-reduce
+@@ -2504,6 +2605,7 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
+             if (!post(l, grp)) return false;
+             if (l + 1 < le_ && !pre(l + 1, grp)) return false;
+         }
++    if (pf_used_) { cudaStreamWaitEvent(cs, pf_join_, 0); pf_used_ = false; }   // STRATA_PREFETCH: the branch rejoins
+     if (tp_ && !tp_head_) {   // TP: the other card runs the head (both hold the same residual)
+         if (tp_head_half_ != nullptr && tp_head_half_->loaded()) {   // STRATA_TP_HEAD_SPLIT: vocabulary rows [row0, V) here
+             const int64_t nq = (int64_t) T * (N / 32) * 36 / 4;
+@@ -3329,6 +3431,25 @@ bool Verifier::run(int T, const int32_t* tokens, int64_t pos0, PoolMultiFn pool,
+                          [this] { (void) release_gpu_waits(5000); });
+         const cudaError_t le = launch_o->status();
+ #else
++        // rdna3-moe-tuning STRATA_PREFETCH=4: the prefetcher rides beside the window graph on its own stream
++        if (g_prefetch() == 4 && pf_cs_ != nullptr && !tp_ && !prof_on_ && lb_ == 0 && le_ == g.n_layers) {
++            if (pf_table_ == nullptr) {
++                const size_t eb = (size_t) strata::kernels::mall_pf_entry_bytes();
++                std::vector<unsigned char> host((size_t) g.n_layers * eb);
++                for (int64_t l = 0; l < g.n_layers; ++l) {
++                    const LayerView pv(*wt_, l);
++                    const void* ptr[strata::kernels::kPrefetchMax]; unsigned long long by[strata::kernels::kPrefetchMax];
++                    const int k = pf_collect(pv, is_qsa_layer(g, l), g_pf_set(), ptr, by);
++                    strata::kernels::mall_pf_fill(host.data() + (size_t) l * eb, ptr, by, k);
++                }
++                if (cudaMalloc(&pf_table_, host.size()) != cudaSuccess ||
++                    cudaMemcpy(pf_table_, host.data(), host.size(), cudaMemcpyHostToDevice) != cudaSuccess) {
++                    err = "verify: prefetch table"; return false;
++                }
++            }
++            static const double pf_to = [] { const char* e = std::getenv("STRATA_PREFETCH_TIMEOUT_MS"); return e ? std::atof(e) : 3.0; }();
++            strata::kernels::mall_prefetcher(pf_table_, (int) g.n_layers, (const unsigned*) m_seq_, g_pf_dist(), g_pf_grid(), pf_to, pf_cs_);
++        }
+         const cudaError_t le = cudaGraphLaunch(ex(T), cs_);
+ #endif
+         trace_ev("LAUNCHED", -1, -1, (int64_t) le);
+diff --git a/src/kernels/cuda/rdna_mmvq.cu b/src/kernels/cuda/rdna_mmvq.cu
+index 991bd0b0..36934e50 100644
+--- a/src/kernels/cuda/rdna_mmvq.cu
++++ b/src/kernels/cuda/rdna_mmvq.cu
+@@ -195,6 +195,22 @@ template <int FMT>
+ void kq_launch(const uint8_t* wb, const Q81* x, float* y, int n_in, int n_out, int ncols, cudaStream_t s,
+                const uint8_t* w2 = nullptr, float* y2 = nullptr, int n_out2 = 0) {
+     const unsigned blocks = (unsigned) ((n_out + 7) / 8 + (w2 ? (n_out2 + 7) / 8 : 0));
++    // rdna3-moe-tuning STRATA_RDNA_KQ_UNR=1-5|10|12 (Q4_K / Q5_K / IQ4_XS, 1-4 columns): superblocks unrolled per loop pass; the
++    // same per-lane arithmetic and reduction, so bitwise the default.  Default 2 for IQ4_XS: the stock unroll (5 at 1-2 columns,
++    // 3 at 3-4) falls off a cliff at 2 columns on gfx1100 (claude_bench, IQ4_XS 2560->12288: T1-4 24.7 / 56.7 / 29.4 / 33.1 us
++    // -> 23.8 / 25.5 / 28.8 / 33.3 at 2; 4 and 5 hit the same cliff at other widths).  =0: the stock unroll.
++    static const int unr_env = [] { const char* v = std::getenv("STRATA_RDNA_KQ_UNR"); return v ? std::atoi(v) : -1; }();
++    const int unr = unr_env >= 0 ? unr_env : (FMT == 23 ? 2 : 0);
++    if constexpr (FMT != 21) if (unr > 0 && ncols <= 4) {
++#define STRATA_KQU(U) switch (ncols) { \
++            case 1: rdna_kq_kernel<FMT, 1, U><<<blocks, 256, 0, s>>>(wb, x, y, n_in, n_out, w2, y2, n_out2); break; \
++            case 2: rdna_kq_kernel<FMT, 2, U><<<blocks, 256, 0, s>>>(wb, x, y, n_in, n_out, w2, y2, n_out2); break; \
++            case 3: rdna_kq_kernel<FMT, 3, U><<<blocks, 256, 0, s>>>(wb, x, y, n_in, n_out, w2, y2, n_out2); break; \
++            default: rdna_kq_kernel<FMT, 4, U><<<blocks, 256, 0, s>>>(wb, x, y, n_in, n_out, w2, y2, n_out2); break; }
++        if (unr >= 12) STRATA_KQU(12) else if (unr >= 10) STRATA_KQU(10) else if (unr == 5) STRATA_KQU(5) else if (unr == 4) STRATA_KQU(4) else if (unr == 3) STRATA_KQU(3) else if (unr == 2) STRATA_KQU(2) else STRATA_KQU(1)
++#undef STRATA_KQU
++        return;
++    }
+     switch (ncols) {
+         case 1: rdna_kq_kernel<FMT, 1><<<blocks, 256, 0, s>>>(wb, x, y, n_in, n_out, w2, y2, n_out2); break;
+         case 2: rdna_kq_kernel<FMT, 2><<<blocks, 256, 0, s>>>(wb, x, y, n_in, n_out, w2, y2, n_out2); break;
+@@ -208,6 +224,10 @@ void kq_launch(const uint8_t* wb, const Q81* x, float* y, int n_in, int n_out, i
+ }
+ }  // namespace
+ 
++static bool kq_min_on() {
++    static const bool on = [] { const char* v = std::getenv("STRATA_RDNA_KQ_MIN"); return v == nullptr || v[0] != '0'; }();
++    return on;
++}
+ bool rdna_kq_mmvq(int type, const void* w, const void* xq, float* y, int n_in, int n_out, int ncols, void* stream) {
+     return rdna_kq_mmvq2(type, w, xq, y, n_in, n_out, ncols, stream, nullptr, nullptr, 0);
+ }
+@@ -221,7 +241,11 @@ bool rdna_kq_mmvq2(int type, const void* w, const void* xq, float* y, int n_in,
+     cudaStream_t s = (cudaStream_t) stream;
+     switch (type) {
+         // Q4_K / Q5_K: measured slower than the native wave kernels on gfx1100 - not taken (kept for the bench)
+-        case 12: if (ncols < 4 && std::getenv("STRATA_RDNA_KQ_ALL") == nullptr) return false;   // faster than the wave kernel from 4 columns
++        // rdna3-moe-tuning STRATA_RDNA_KQ_MIN (default on, =0 off): Q4_K from 3 columns, and from 2 on the 6144-wide rows
++        // (claude_bench on gfx1100, bitwise the wave kernel: z 2560->6144 T3 28.3 -> 25.4 us, out 6144->2560 T2 24.1 -> 19.4,
++        // T3 27.8 -> 21.1; z at T2 even, T1 the wave kernel wins)
++        case 12: if (ncols < 4 && std::getenv("STRATA_RDNA_KQ_ALL") == nullptr && !(kq_min_on() && (ncols >= 3 || (ncols == 2 && n_in >= 4096))))
++                     return false;
+             kq_launch<12>(wb, x, y, n_in, n_out, ncols, s, w2, y2, n_out2); return true;
+         case 13: if (ncols < 4 && std::getenv("STRATA_RDNA_KQ_ALL") == nullptr) return false;
+             kq_launch<13>(wb, x, y, n_in, n_out, ncols, s, w2, y2, n_out2); return true;
+@@ -262,4 +286,79 @@ bool rdna_q6k_mmvq2(const void* w, const void* xq, float* y, int n_in, int n_out
+     }
+     return true;
+ }
++
++// rdna3-moe-tuning STRATA_PREFETCH: read weight ranges once so they sit in the 96 MB Infinity Cache (MALL) before their GEMV
++// runs (tools/mallbench.hip on gfx1100: a 32-64 MB read runs at 1.2-2.0 TB/s warm vs 0.7-0.8 cold; 24 blocks pull ~330 GB/s).
++// Pure loads, nothing written (the sink store never happens), so it changes no output.
++namespace {
++constexpr int kPrefetchMax = 16;   // as native_mmvq.hpp
++struct PfArgs { const uint4* p[kPrefetchMax]; unsigned n16[kPrefetchMax]; int n; };
++__global__ void __launch_bounds__(256) mall_prefetch_kernel(PfArgs a, unsigned* sink) {
++    uint32_t acc = 0;
++    const unsigned stride = gridDim.x * blockDim.x;
++    for (int r = 0; r < a.n; ++r) {
++        const uint4* __restrict__ p = a.p[r];
++        for (unsigned i = blockIdx.x * blockDim.x + threadIdx.x; i < a.n16[r]; i += stride) {
++            const uint4 v = p[i];
++            acc ^= v.x ^ v.y ^ v.z ^ v.w;
++        }
++    }
++    if (acc == 0x9e3779b9u && sink) *sink = acc;
++}
++}  // namespace
++void mall_prefetch(const void* const* ptrs, const unsigned long long* bytes, int n, int grid, void* stream) {
++    PfArgs a{}; int k = 0;
++    for (int i = 0; i < n && k < kPrefetchMax; ++i)
++        if (ptrs[i] != nullptr && bytes[i] >= 16) { a.p[k] = (const uint4*) ptrs[i]; a.n16[k] = (unsigned) (bytes[i] / 16); ++k; }
++    a.n = k;
++    if (k == 0) return;
++    mall_prefetch_kernel<<<(unsigned) (grid > 0 ? grid : 24), 256, 0, (cudaStream_t) stream>>>(a, nullptr);
++}
++
++// rdna3-moe-tuning STRATA_PREFETCH=4: the persistent prefetcher (see verify.cpp g_prefetch).  table: n_layers PfArgs entries.
++namespace {
++__global__ void __launch_bounds__(256) mall_prefetcher_kernel(const PfArgs* __restrict__ table, int n_layers,
++                                                              const volatile unsigned* seq, int dist, unsigned long long timeout) {
++    __shared__ int go;
++    uint32_t acc = 0;
++    const unsigned stride = gridDim.x * blockDim.x;
++    for (int L = 0; L < n_layers; ++L) {
++        const unsigned need = L >= dist ? (unsigned) (L - dist + 1) : 0u;
++        if (threadIdx.x == 0) {
++            const unsigned long long t0 = wall_clock64();
++            int ok = 1;
++            while (*seq < need) {
++                if (wall_clock64() - t0 > timeout) { ok = 0; break; }
++                __builtin_amdgcn_s_sleep(4);
++            }
++            go = ok;
++        }
++        __syncthreads();
++        if (!go) break;
++        const int n = table[L].n;
++        for (int r = 0; r < n; ++r) {
++            const uint4* __restrict__ p = table[L].p[r];
++            const unsigned m = table[L].n16[r];
++            for (unsigned i = blockIdx.x * blockDim.x + threadIdx.x; i < m; i += stride) {
++                const uint4 v = p[i];
++                acc ^= v.x ^ v.y ^ v.z ^ v.w;
++            }
++        }
++        __syncthreads();
++    }
++    if (acc == 0x9e3779b9u && threadIdx.x == 1023) go = (int) acc;   // keeps the loads; never true for 256 threads
++}
++}  // namespace
++unsigned long long mall_pf_entry_bytes() { return sizeof(PfArgs); }
++void mall_pf_fill(void* entry, const void* const* ptrs, const unsigned long long* bytes, int n) {
++    PfArgs a{}; int k = 0;
++    for (int i = 0; i < n && k < kPrefetchMax; ++i)
++        if (ptrs[i] != nullptr && bytes[i] >= 16) { a.p[k] = (const uint4*) ptrs[i]; a.n16[k] = (unsigned) (bytes[i] / 16); ++k; }
++    a.n = k;
++    *static_cast<PfArgs*>(entry) = a;
++}
++void mall_prefetcher(const void* table, int n_layers, const unsigned* seq, int dist, int grid, double timeout_ms, void* stream) {
++    mall_prefetcher_kernel<<<(unsigned) (grid > 0 ? grid : 24), 256, 0, (cudaStream_t) stream>>>(
++        static_cast<const PfArgs*>(table), n_layers, seq, dist, (unsigned long long) (timeout_ms * 1e5));   // 100 MHz wall clock
++}
+ }  // namespace strata::kernels

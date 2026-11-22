@@ -1,0 +1,13 @@
+== s22w12  XARGS=[--pool-workers 12]
+    8192      2788    2436   1.14     109.2  119.0   0.92
+avg T 2.74, 2.23 tokens/window, 20.40 ms/window = verify 18.56 (GPU-reach wait 11.85 + per-layer host 5.75 [plan 0.16 actq 0.15 jobs 0.09 CPU 4.97]
+avg T 2.93, 2.15 tokens/window, 19.69 ms/window = verify 17.84 (GPU-reach wait 12.75 + per-layer host 4.12 [plan 0.17 actq 0.13 jobs 0.08 CPU 3.36]
+== s22w4  XARGS=[--pool-workers 4]
+    8192      2776    2436   1.14     100.3  119.0   0.84
+avg T 2.72, 2.06 tokens/window, 22.69 ms/window = verify 20.87 (GPU-reach wait 11.68 + per-layer host 8.23 [plan 0.16 actq 0.13 jobs 0.07 CPU 7.50]
+avg T 3.05, 2.33 tokens/window, 21.22 ms/window = verify 19.31 (GPU-reach wait 12.69 + per-layer host 5.64 [plan 0.16 actq 0.13 jobs 0.07 CPU 4.92]
+== s22w16  XARGS=[--pool-workers 16]
+    8192      2787    2436   1.14     109.1  119.0   0.92
+avg T 2.74, 2.23 tokens/window, 20.40 ms/window = verify 18.57 (GPU-reach wait 11.84 + per-layer host 5.76 [plan 0.17 actq 0.15 jobs 0.09 CPU 4.96]
+avg T 2.93, 2.15 tokens/window, 19.72 ms/window = verify 17.86 (GPU-reach wait 12.77 + per-layer host 4.12 [plan 0.17 actq 0.14 jobs 0.08 CPU 3.36]
+sweep22 done

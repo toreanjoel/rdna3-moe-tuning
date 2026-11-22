@@ -1,0 +1,25 @@
+== s21abl0  XENV=[STRATA_ABL=0]
+    8192      2789    2436   1.14     109.2  119.0   0.92
+avg T 2.74, 2.23 tokens/window, 20.38 ms/window = verify 18.54
+avg T 2.93, 2.15 tokens/window, 19.69 ms/window = verify 17.85
+== s21abl2  XENV=[STRATA_ABL=2]
+    8192      2791    2436   1.15      55.1  119.0   0.46
+avg T 1.67, 1.00 tokens/window, 18.31 ms/window = verify 16.06
+avg T 2.50, 1.00 tokens/window, 17.98 ms/window = verify 15.17
+== s21abl4  XENV=[STRATA_ABL=4]
+    8192      2785    2436   1.14      61.1  119.0   0.51
+avg T 1.68, 1.00 tokens/window, 17.06 ms/window = verify 15.75
+avg T 1.54, 1.00 tokens/window, 15.73 ms/window = verify 14.47
+== s21abl0  XENV=[STRATA_ABL=0]
+    8192      2787    2436   1.14     109.1  119.0   0.92
+avg T 2.74, 2.23 tokens/window, 20.41 ms/window = verify 18.56
+avg T 2.93, 2.15 tokens/window, 19.72 ms/window = verify 17.86
+== s21abl2  XENV=[STRATA_ABL=2]
+    8192      2784    2436   1.14      64.1  119.0   0.54
+avg T 1.00, 1.00 tokens/window, 15.83 ms/window = verify 12.79
+avg T 1.00, 1.00 tokens/window, 15.39 ms/window = verify 12.22
+== s21abl4  XENV=[STRATA_ABL=4]
+    8192      2783    2436   1.14      61.2  119.0   0.51
+avg T 1.68, 1.00 tokens/window, 16.98 ms/window = verify 15.67
+avg T 1.54, 1.00 tokens/window, 15.74 ms/window = verify 14.48
+sweep21 done

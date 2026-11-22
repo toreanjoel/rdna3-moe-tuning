@@ -91,6 +91,45 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
 - Next: (1) router GEMV + shared gate/up as one multi-matrix launch (largest latency gap); (2) hc folds; (3) combine;
   each behind a switch, bitwise check, end-to-end A/B.
 
+## Stage cost by doubling 2026-11-22 (tools/sweep21.sh, STRATA_ABL bitmask in verify.cpp; snapshot/2026-11-22/sweep21*.txt)
+- Skipping a stage is useless: wrong outputs scatter routing, CPU experts explode (host 10-21 ms), T changes (sweep21a-c).
+- Running a stage TWICE keeps outputs and windows identical; the added ms is the stage's real cost (a lower bound: the
+  second pass can hit the 96 MB Infinity Cache). Base verify 17.9-18.6 ms/window (T 2.74-2.79):
+  shared expert (&1) +0.58, VRAM experts (&2) +2.2, all mixer dense GEMVs (&4) +2.2, router GEMV (&8) +0.2.
+- So the per-stage profile (sweep6) inflates small stages ~2x (stamp nodes). Dense GEMVs move ~1.9 GB/step in ~2.2 ms
+  (~850 GB/s, at roofline). Shared expert + router are worth <=0.8 ms total -> fusing them is <=4%; deprioritised.
+- ~13 ms of the window is neither dense GEMVs nor experts: HC reads, GDN conv/ab/rec, QSA attention/top-k, combine,
+  plan/publish, waits, node overhead (~1140 nodes), draft 1.8.
+- Caveat: the doubled pass can hit the Infinity Cache, so dense (~1.9 GB) and experts are under-counted; the profile's
+  4.5 / 4.1 ms are closer to their real cost. Warm re-reads at ~half time = the cache is worth ~2 ms IF filled for free.
+- sweep22 (--pool-workers 4/12/16): 12 = 16 (109.2 / 109.1), 4 = 100.3. The CPU experts (system RAM, ~35 GB/s of ~83)
+  are not on the critical path at 12 workers; faster CPU experts would save <=0.25 ms (GPU waitCPU). Not a lever.
+
+## Infinity Cache prefetch 2026-11-22 (DROPPED; tools/mallbench.hip, sweep23a-d, snapshot/2026-11-22/prefetch-abl-experiment.diff)
+- mallbench (gfx1100): 32-64 MB streaming read cold 684-779 GB/s, warm 1.2-2.0 TB/s; 128 MB no longer fits (854).
+  A 24-block side read pulls ~330 GB/s (48: 595). So prefetching next-layer weights during latency-bound phases looked worth ~2 ms.
+- In-graph side branch (fork/join per layer, STRATA_PREFETCH=1/2/3): even a 2.6 MB router prefetch costs +3.2 ms/window
+  (~65 us per fork/join on HIP graphs). DEBUG_HIP_GRAPH_SEGMENT_SCHEDULING=1 / DEBUG_HIP_FORCE_GRAPH_QUEUES=2: no change.
+  This is also why STRATA_SH_STREAM / SIDE_MIXER lose here: graph branches are expensive on this stack.
+- Out-of-graph persistent prefetcher (=4: own stream, polls the doorbell ring m_seq_, reads layer L+1 after layer L routes):
+  24 blocks 101.2 tok/s, 48 blocks 55.0 (vs 109.5). Concurrent blocks delay kernels that need their whole grid resident
+  (the fused HC read's inter-block barrier). Only an in-kernel prefetch (idle blocks of an existing launch) could still work.
+
+## Expert kernels vs read speed 2026-11-22 (expbench-e24: STRATA_EXP_AUTO=1, 20 groups)
+- Per layer: gate/up 43-55 us (380-560 GB/s), down 24-34 us (320-600 GB/s), ~75-90 us -> ~3.8 ms/window. A plain
+  streaming read of the same ~25 MB takes ~42 us on gfx1100 (mallbench: 16 MB 36 us, 32 MB 49 us) -> the expert kernels
+  are near the practical read rate for their size; the fixed per-kernel cost (~15-20 us) dominates, not decode ALU.
+  Conclusion: fewer launches beats faster bodies everywhere on this engine.
+
+## Mixed-format GEMV pair 2026-11-22 (patches/rdna-mix.patch, STRATA_RDNA_MIX default on, =0 off; sweep24, quality25)
+- One launch for two matrices of different RDNA formats (12/13/14/23) over the same q8_1 input; rows of each run their own
+  rdna_kq / rdna_q6k body (kernels refactored into __device__ bodies + thin wrappers). Used for GDN qkv (Q6_K) + z (Q4_K)
+  and the shared expert's gate + up when the formats differ (most layers: Q4_K/IQ4_XS/Q5_K/Q6_K mixes).
+- Bitwise vs the separate RDNA kernels (KQ_ALL=1 with/without MIX: identical windows/tokens). Verify -0.32 ms/window
+  (18.53 -> 18.21, 17.83 -> 17.51). Bench tok/s moved 109.3 -> 108.8 only because answers changed (2.23 -> 2.10 tokens kept
+  on these two prompts; KQ_ALL alone shows 117.8 the other way) - with 2 bench prompts, acceptance noise is +-8%: judge
+  non-bitwise changes on verify ms/window, not tok/s. quality25: top-1 100%, KL 0.00000, PPL 4.041 vs 4.040.
+
 ## Dense GEMVs at the model's real shapes 2026-11-22 (patches/bench-shapes.patch adds them to claude_bench mmvq; tools/gguf_tensors.py)
 - Per layer: GDN qkv Q6_K 2560->10240, z (attn_gate) Q4_K 2560->6144, ssm_out Q6_K 6144->2560, alpha/beta bf16 2560->48;
   QSA q IQ4_XS 2560->12288, k/v Q6_K 2560->512, output Q4_K 6144->2560; shexp gate/up Q4_K / IQ4_XS 2560->640, down IQ4_NL.

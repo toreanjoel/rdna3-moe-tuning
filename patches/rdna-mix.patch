@@ -1,0 +1,183 @@
+diff --git a/include/strata/kernels/native_mmvq.hpp b/include/strata/kernels/native_mmvq.hpp
+index 06825ac7..08f70429 100644
+--- a/include/strata/kernels/native_mmvq.hpp
++++ b/include/strata/kernels/native_mmvq.hpp
+@@ -146,6 +146,11 @@ bool rdna_q6k_mmvq2(const void* w, const void* xq, float* y, int n_in, int n_out
+                     const void* w2, float* y2, int n_out2);
+ bool rdna_kq_mmvq2(int type, const void* w, const void* xq, float* y, int n_in, int n_out, int ncols, void* stream,
+                    const void* w2, float* y2, int n_out2);
++/// rdna3-moe-tuning STRATA_RDNA_MIX (default on, =0 off): two matrices of DIFFERENT RDNA formats (12/13/14/23) over one q8_1 input in one launch,
++/// rows of the second after the first's (n1 % 8 == 0), each row its own RDNA kernel's arithmetic; false: nothing launched
++bool rdna_mix_enabled();
++bool rdna_mmvq_mix(int t1, const void* w1, float* y1, int n1, int t2, const void* w2, float* y2, int n2, const void* xq,
++                   int n_in, int ncols, void* stream);
+ /// STRATA_RDNA_PAIR=1: two matrices of one format reading the same q8_1 input in one launch (rows of the second after
+ /// the first's), each row bitwise what its own native_mmvq call computes.  false: not applicable, nothing launched.
+ bool rdna_mmvq_pair(int type, const void* w1, const void* w2, const void* xq, float* y1, float* y2, int n_in,
+diff --git a/src/core/verify.cpp b/src/core/verify.cpp
+index 6e5804bf..e31e39ed 100644
+--- a/src/core/verify.cpp
++++ b/src/core/verify.cpp
+@@ -1633,7 +1633,13 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
+                         strata::kernels::rdna_mmvq_pair(wqkv->native_type, wqkv->native_data, wg->native_data, xq_,
+                                                         qkv + (size_t) tb * C, z_ + (size_t) tb * ZV, (int) N, (int) C,
+                                                         (int) ZV, n, cs);
+-                    if (!side_proj && !z_paired) mm(wqkv, qkv + (size_t) tb * C, (int) N, (int) C);   // with side_proj: above, first
++                    // rdna3-moe-tuning STRATA_RDNA_MIX: q/k/v and z in one launch when their formats differ (Q6_K + Q4_K here)
++                    const bool z_mixed = !z_paired && !mapped && !br && !side_proj && wqkv->native_type != wg->native_type &&
++                        !il_path(wqkv, (int) C) && !il_path(wg, (int) ZV) &&
++                        strata::kernels::rdna_mmvq_mix(wqkv->native_type, wqkv->native_data, qkv + (size_t) tb * C, (int) C,
++                                                       wg->native_type, wg->native_data, z_ + (size_t) tb * ZV, (int) ZV, xq_,
++                                                       (int) N, n, cs);
++                    if (!side_proj && !z_paired && !z_mixed) mm(wqkv, qkv + (size_t) tb * C, (int) N, (int) C);   // with side_proj: above, first
+                     stamp(l, 2, grp);
+                     if (batch_rec_) {   // contiguous rows may be proposals for the same slot
+                         for (int t = tb; t < te;) {
+@@ -1666,7 +1672,7 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
+                                  (const float*) wsa->data, gate + (size_t) tb * HV, beta + (size_t) tb * HV, (int) N, (int) HV,
+                                  n, cs);
+                     stamp(l, 4, grp);
+-                    if (!side_proj && !z_paired) mm(wg, z_ + (size_t) tb * ZV, (int) N, (int) ZV);
++                    if (!side_proj && !z_paired && !z_mixed) mm(wg, z_ + (size_t) tb * ZV, (int) N, (int) ZV);
+                     stamp(l, 5, grp);
+                     if (side_proj && cudaStreamWaitEvent(cs, pjoin_, 0) != cudaSuccess) {
+                         err = "verify: the gate projection's branch could not join";
+diff --git a/src/kernels/cuda/rdna_mmvq.cu b/src/kernels/cuda/rdna_mmvq.cu
+index 5b81e451..c028572c 100644
+--- a/src/kernels/cuda/rdna_mmvq.cu
++++ b/src/kernels/cuda/rdna_mmvq.cu
+@@ -31,10 +31,10 @@ __device__ __forceinline__ uint32_t ld32u(const uint8_t* p) {   // gfx11: unalig
+ }
+ 
+ template <int NC, int UNR = (NC <= 2 ? 5 : NC <= 4 ? 3 : 2)>
+-__global__ void __launch_bounds__(256) rdna_q6k_kernel(const uint8_t* __restrict__ w, const Q81* __restrict__ x,
+-                                                       float* __restrict__ y, int n_in, int n_out, const uint8_t* __restrict__ w2, float* __restrict__ y2, int n_out2) {
++__device__ __forceinline__ void rdna_q6k_body(int row_in, const uint8_t* __restrict__ w, const Q81* __restrict__ x,
++                                              float* __restrict__ y, int n_in, int n_out, const uint8_t* __restrict__ w2, float* __restrict__ y2, int n_out2) {
+     const int lane = threadIdx.x & 31;
+-    int row = blockIdx.x * 8 + (threadIdx.x >> 5);
++    int row = row_in;
+     if (w2 != nullptr && row >= n_out) {   // STRATA_RDNA_PAIR: rows past the first matrix are the second's
+         row -= n_out; w = w2; y = y2; n_out = n_out2;
+     }
+@@ -77,6 +77,11 @@ __global__ void __launch_bounds__(256) rdna_q6k_kernel(const uint8_t* __restrict
+         if (lane == 0) y[(size_t) c * n_out + row] = v;
+     }
+ }
++template <int NC, int UNR = (NC <= 2 ? 5 : NC <= 4 ? 3 : 2)>
++__global__ void __launch_bounds__(256) rdna_q6k_kernel(const uint8_t* __restrict__ w, const Q81* __restrict__ x,
++                                                       float* __restrict__ y, int n_in, int n_out, const uint8_t* __restrict__ w2, float* __restrict__ y2, int n_out2) {
++    rdna_q6k_body<NC, UNR>(blockIdx.x * 8 + (threadIdx.x >> 5), w, x, y, n_in, n_out, w2, y2, n_out2);
++}
+ 
+ // ---- Q4_K / Q5_K / IQ4_XS: lane = (sub-block j = lane / 4, 8 weights l0 = 8 (lane % 4)); weights decoded once per
+ // superblock; K-quants take the min term from the lane's own activation sum (dot with ones) - same products,
+@@ -103,11 +108,11 @@ template <> struct KFmt<23> { static constexpr int B = 136; };
+ template <> struct KFmt<21> { static constexpr int B = 110; };   // IQ3_S: d, qs[64], qh[8], signs[32], scales[4]
+ 
+ template <int FMT, int NC, int UNR = (FMT == 21 ? 2 : (NC <= 2 ? 5 : NC <= 4 ? 3 : 2))>
+-__global__ void __launch_bounds__(256) rdna_kq_kernel(const uint8_t* __restrict__ w, const Q81* __restrict__ x,
+-                                                      float* __restrict__ y, int n_in, int n_out, const uint8_t* __restrict__ w2, float* __restrict__ y2, int n_out2) {
++__device__ __forceinline__ void rdna_kq_body(int row_in, const uint8_t* __restrict__ w, const Q81* __restrict__ x,
++                                             float* __restrict__ y, int n_in, int n_out, const uint8_t* __restrict__ w2, float* __restrict__ y2, int n_out2) {
+     constexpr int BB_ = KFmt<FMT>::B;
+     const int lane = threadIdx.x & 31;
+-    int row = blockIdx.x * 8 + (threadIdx.x >> 5);
++    int row = row_in;
+     // IQ3_S: the 512-entry grid staged in LDS (2 KB) before any early return
+     __shared__ uint32_t s_grid[FMT == 21 ? 512 : 1];
+     if constexpr (FMT == 21) {
+@@ -191,6 +196,48 @@ __global__ void __launch_bounds__(256) rdna_kq_kernel(const uint8_t* __restrict_
+         if (lane == 0) y[(size_t) c * n_out + row] = v;
+     }
+ }
++template <int FMT, int NC, int UNR = (FMT == 21 ? 2 : (NC <= 2 ? 5 : NC <= 4 ? 3 : 2))>
++__global__ void __launch_bounds__(256) rdna_kq_kernel(const uint8_t* __restrict__ w, const Q81* __restrict__ x,
++                                                      float* __restrict__ y, int n_in, int n_out, const uint8_t* __restrict__ w2, float* __restrict__ y2, int n_out2) {
++    rdna_kq_body<FMT, NC, UNR>(blockIdx.x * 8 + (threadIdx.x >> 5), w, x, y, n_in, n_out, w2, y2, n_out2);
++}
++// rdna3-moe-tuning STRATA_RDNA_MIX: two formats in one launch, each row exactly its own RDNA kernel's (the default unroll:
++// IQ4_XS 2 as kq_launch, the rest stock)
++template <int F, int NC>
++__device__ __forceinline__ void mix_row(int row, const uint8_t* w, const Q81* x, float* y, int n_in, int n_out) {
++    if constexpr (F == 14) rdna_q6k_body<NC>(row, w, x, y, n_in, n_out, nullptr, nullptr, 0);
++    else rdna_kq_body<F, NC, (F == 23 ? 2 : (NC <= 2 ? 5 : NC <= 4 ? 3 : 2))>(row, w, x, y, n_in, n_out, nullptr, nullptr, 0);
++}
++template <int F1, int F2, int NC>
++__global__ void __launch_bounds__(256) rdna_mix_kernel(const uint8_t* __restrict__ w1, float* __restrict__ y1, int n1,
++                                                       const uint8_t* __restrict__ w2, float* __restrict__ y2, int n2,
++                                                       const Q81* __restrict__ x, int n_in) {
++    const int row = blockIdx.x * 8 + (threadIdx.x >> 5);
++    if (row < n1) mix_row<F1, NC>(row, w1, x, y1, n_in, n1);
++    else mix_row<F2, NC>(row - n1, w2, x, y2, n_in, n2);
++}
++template <int F1, int F2>
++void mix_launch(const uint8_t* w1, float* y1, int n1, const uint8_t* w2, float* y2, int n2, const Q81* x, int n_in, int nc, cudaStream_t s) {
++    const unsigned blocks = (unsigned) (n1 / 8 + (n2 + 7) / 8);
++    switch (nc) {
++        case 1: rdna_mix_kernel<F1, F2, 1><<<blocks, 256, 0, s>>>(w1, y1, n1, w2, y2, n2, x, n_in); break;
++        case 2: rdna_mix_kernel<F1, F2, 2><<<blocks, 256, 0, s>>>(w1, y1, n1, w2, y2, n2, x, n_in); break;
++        case 3: rdna_mix_kernel<F1, F2, 3><<<blocks, 256, 0, s>>>(w1, y1, n1, w2, y2, n2, x, n_in); break;
++        case 4: rdna_mix_kernel<F1, F2, 4><<<blocks, 256, 0, s>>>(w1, y1, n1, w2, y2, n2, x, n_in); break;
++        default: rdna_mix_kernel<F1, F2, 5><<<blocks, 256, 0, s>>>(w1, y1, n1, w2, y2, n2, x, n_in); break;
++    }
++}
++template <int F1>
++bool mix_f2(int t2, const uint8_t* w1, float* y1, int n1, const uint8_t* w2, float* y2, int n2, const Q81* x, int n_in, int nc, cudaStream_t s) {
++    switch (t2) {
++        case 12: if constexpr (F1 != 12) { mix_launch<F1, 12>(w1, y1, n1, w2, y2, n2, x, n_in, nc, s); return true; } break;
++        case 13: if constexpr (F1 != 13) { mix_launch<F1, 13>(w1, y1, n1, w2, y2, n2, x, n_in, nc, s); return true; } break;
++        case 14: if constexpr (F1 != 14) { mix_launch<F1, 14>(w1, y1, n1, w2, y2, n2, x, n_in, nc, s); return true; } break;
++        case 23: if constexpr (F1 != 23) { mix_launch<F1, 23>(w1, y1, n1, w2, y2, n2, x, n_in, nc, s); return true; } break;
++        default: break;
++    }
++    return false;
++}
+ template <int FMT>
+ void kq_launch(const uint8_t* wb, const Q81* x, float* y, int n_in, int n_out, int ncols, cudaStream_t s,
+                const uint8_t* w2 = nullptr, float* y2 = nullptr, int n_out2 = 0) {
+@@ -286,4 +333,26 @@ bool rdna_q6k_mmvq2(const void* w, const void* xq, float* y, int n_in, int n_out
+     }
+     return true;
+ }
++
++// rdna3-moe-tuning STRATA_RDNA_MIX (default on, =0 off): see mix_row.  sweep24 (8K): verify -0.32 ms a window (18.53 -> 18.21);
++// quality25: top-1 100%, KL 0.00000, PPL 4.041 vs 4.040 (not bitwise vs the stock Q4_K / Q5_K wave kernels at 1-2 columns)
++bool rdna_mix_enabled() {
++    static const bool on = [] { const char* v = std::getenv("STRATA_RDNA_MIX"); return v == nullptr || v[0] != '0'; }();
++    return on;
++}
++bool rdna_mmvq_mix(int t1, const void* w1, float* y1, int n1, int t2, const void* w2, float* y2, int n2, const void* xq,
++                   int n_in, int ncols, void* stream) {
++    if (!rdna_mix_enabled() || t1 == t2 || n_in % QK != 0 || n1 % 8 != 0 || ncols < 1 || ncols > 5) return false;
++    const auto* a = static_cast<const uint8_t*>(w1);
++    const auto* b = static_cast<const uint8_t*>(w2);
++    const auto* x = static_cast<const Q81*>(xq);
++    cudaStream_t s = (cudaStream_t) stream;
++    switch (t1) {
++        case 12: return mix_f2<12>(t2, a, y1, n1, b, y2, n2, x, n_in, ncols, s);
++        case 13: return mix_f2<13>(t2, a, y1, n1, b, y2, n2, x, n_in, ncols, s);
++        case 14: return mix_f2<14>(t2, a, y1, n1, b, y2, n2, x, n_in, ncols, s);
++        case 23: return mix_f2<23>(t2, a, y1, n1, b, y2, n2, x, n_in, ncols, s);
++        default: return false;
++    }
++}
+ }  // namespace strata::kernels
+diff --git a/src/kernels/cuda/shared_expert.cu b/src/kernels/cuda/shared_expert.cu
+index f8b58963..c46d96d6 100644
+--- a/src/kernels/cuda/shared_expert.cu
++++ b/src/kernels/cuda/shared_expert.cu
+@@ -227,8 +227,11 @@ void shared_expert_multi(int n_tok, const float* x, const uint16_t* x_bf16, cons
+     }
+     // S26 STRATA_LFUSE (gate_deferred): gate and up in one launch where the pair applies (bitwise the two calls)
+     // STRATA_RDNA_PAIR: gate and up in one RDNA GEMV launch when they share a format the RDNA kernels take (bitwise)
+-    const bool rpair = nw.gate_type == nw.up_type &&
+-        rdna_mmvq_pair(nw.gate_type, nw.gate_data, nw.up_data, x_q8_1, gate, up, (int) n_embd, (int) n_ff, (int) n_ff, n_tok, stream);
++    // rdna3-moe-tuning STRATA_RDNA_MIX: gate and up in one launch when their formats differ (most layers of the IQ3_S pack)
++    const bool rpair = (nw.gate_type == nw.up_type &&
++        rdna_mmvq_pair(nw.gate_type, nw.gate_data, nw.up_data, x_q8_1, gate, up, (int) n_embd, (int) n_ff, (int) n_ff, n_tok, stream)) ||
++        (nw.gate_type != nw.up_type &&
++         rdna_mmvq_mix(nw.gate_type, nw.gate_data, gate, (int) n_ff, nw.up_type, nw.up_data, up, (int) n_ff, x_q8_1, (int) n_embd, n_tok, stream));
+     if (!rpair && !(pair && nw.gate_type == nw.up_type &&
+           native_mmvq_pair(nw.gate_type, nw.gate_data, nw.up_data, x_q8_1, gate, up, (int) n_embd, (int) n_ff, n_tok, stream))) {
+         native_mmvq(nw.gate_type, nw.gate_data, x_q8_1, gate, (int) n_embd, (int) n_ff, n_tok, stream);

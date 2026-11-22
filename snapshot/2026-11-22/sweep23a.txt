@@ -1,0 +1,26 @@
+== s23_0  XENV=[]
+    8192      2780    2436   1.14     109.3  119.0   0.92
+all 2 requests passed
+avg T 2.74, 2.23 tokens/window, 20.37 ms/window = verify 18.53
+avg T 2.93, 2.15 tokens/window, 19.67 ms/window = verify 17.82
+== s23_1  XENV=[STRATA_PREFETCH=1]
+    8192      2786    2436   1.14      88.0  119.0   0.74
+all 2 requests passed
+avg T 2.72, 2.06 tokens/window, 23.53 ms/window = verify 21.71
+avg T 2.86, 2.10 tokens/window, 23.80 ms/window = verify 21.97
+== s23_2  XENV=[STRATA_PREFETCH=1 STRATA_PREFETCH_GRID=48]
+    8192      2783    2436   1.14      94.1  119.0   0.79
+all 2 requests passed
+avg T 2.72, 2.06 tokens/window, 23.37 ms/window = verify 21.54
+avg T 3.05, 2.33 tokens/window, 23.29 ms/window = verify 21.36
+== s23_3  XENV=[STRATA_PREFETCH=3]
+    8192      2785    2436   1.14      90.2  119.0   0.76
+all 2 requests passed
+avg T 2.72, 2.06 tokens/window, 23.67 ms/window = verify 21.83
+avg T 3.05, 2.33 tokens/window, 24.97 ms/window = verify 23.03
+== s23_4  XENV=[STRATA_PREFETCH=2]
+    8192      2785    2436   1.14      84.4  119.0   0.71
+all 2 requests passed
+avg T 2.63, 2.08 tokens/window, 25.12 ms/window = verify 23.33
+avg T 2.81, 2.12 tokens/window, 24.58 ms/window = verify 22.77
+sweep23 done

@@ -1,0 +1,31 @@
+== s24_0  XENV=[]
+    8192      2782    2436   1.14     109.3  119.0   0.92
+all 2 requests passed
+avg T 2.74, 2.23 tokens/window, 20.36 ms/window = verify 18.53
+avg T 2.93, 2.15 tokens/window, 19.67 ms/window = verify 17.83
+== s24_1  XENV=[STRATA_RDNA_MIX=1]
+    8192      2786    2436   1.14     108.8  119.0   0.91
+all 2 requests passed
+avg T 2.77, 2.10 tokens/window, 20.05 ms/window = verify 18.21
+avg T 2.96, 2.19 tokens/window, 19.37 ms/window = verify 17.51
+== s24_2  XENV=[STRATA_RDNA_KQ_ALL=1]
+    8192      2789    2436   1.14     117.8  119.0   0.99
+all 2 requests passed
+avg T 2.89, 2.25 tokens/window, 20.85 ms/window = verify 18.98
+avg T 2.99, 2.53 tokens/window, 19.84 ms/window = verify 17.96
+== s24_3  XENV=[STRATA_RDNA_KQ_ALL=1 STRATA_RDNA_MIX=1]
+    8192      2786    2436   1.14     119.6  119.0   1.01
+all 2 requests passed
+avg T 2.89, 2.25 tokens/window, 20.56 ms/window = verify 18.67
+avg T 2.99, 2.53 tokens/window, 19.50 ms/window = verify 17.61
+== s24_4  XENV=[]
+    8192      2787    2436   1.14     109.2  119.0   0.92
+all 2 requests passed
+avg T 2.74, 2.23 tokens/window, 20.39 ms/window = verify 18.54
+avg T 2.93, 2.15 tokens/window, 19.67 ms/window = verify 17.83
+== s24_5  XENV=[STRATA_RDNA_MIX=1]
+    8192      2788    2436   1.14     108.7  119.0   0.91
+all 2 requests passed
+avg T 2.77, 2.10 tokens/window, 20.08 ms/window = verify 18.24
+avg T 2.96, 2.19 tokens/window, 19.39 ms/window = verify 17.53
+sweep23 done

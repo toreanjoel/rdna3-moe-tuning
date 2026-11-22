@@ -1,0 +1,5 @@
+== mix1
+reference: /home/bonfire/work/rdna3/bench/quality25/base.tsv
+run                                      segment         pos    top1       KL   KL p99     PPL PPL ref
+mix1.tsv                                 all            4995 100.00%  0.00000   0.0000   4.041   4.040
+quality25 done

@@ -1,0 +1,21 @@
+== s23_0  XENV=[DEBUG_HIP_GRAPH_SEGMENT_SCHEDULING=1]
+    8192      2785    2436   1.14     109.4  119.0   0.92
+all 2 requests passed
+avg T 2.74, 2.23 tokens/window, 20.36 ms/window = verify 18.52
+avg T 2.93, 2.15 tokens/window, 19.67 ms/window = verify 17.82
+== s23_1  XENV=[STRATA_PREFETCH=1 STRATA_PREFETCH_SET=32 DEBUG_HIP_GRAPH_SEGMENT_SCHEDULING=1]
+    8192      2789    2436   1.15      94.4  119.0   0.79
+all 2 requests passed
+avg T 2.74, 2.23 tokens/window, 23.61 ms/window = verify 21.78
+avg T 2.93, 2.15 tokens/window, 22.77 ms/window = verify 20.91
+== s23_2  XENV=[STRATA_PREFETCH=1 STRATA_PREFETCH_SET=32 DEBUG_HIP_FORCE_GRAPH_QUEUES=2]
+    8192      2786    2436   1.14      94.2  119.0   0.79
+all 2 requests passed
+avg T 2.74, 2.23 tokens/window, 23.67 ms/window = verify 21.82
+avg T 2.93, 2.15 tokens/window, 22.78 ms/window = verify 20.92
+== s23_3  XENV=[STRATA_PREFETCH=1 STRATA_PREFETCH_SET=127 DEBUG_HIP_GRAPH_SEGMENT_SCHEDULING=1]
+    8192      2785    2436   1.14      87.9  119.0   0.74
+all 2 requests passed
+avg T 2.72, 2.06 tokens/window, 23.54 ms/window = verify 21.71
+avg T 2.86, 2.10 tokens/window, 23.82 ms/window = verify 21.97
+sweep23 done

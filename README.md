@@ -213,11 +213,14 @@ would need more power. Raw output: [`snapshot/2026-11-22/sweep19.txt`](snapshot/
 | `--spec 3` / `5` / `6`, `--spec-min-p 0.7` | 108 / 112 / 114.5 / 112 (8K, 3 runs) | no |
 | `--spec-min-p 0.35`, `--mtp-q4 proj` (full-precision draft head) | bench 8K +6% / +5%, 32K −2% / −0.4%; varied chats ([`tools/chatbench.py`](tools/chatbench.py)) 126.0 → 123.0 / 124.6 | no |
 | Upstream Strata 0.2.19 engine (0.1.65 `hip-rx7900` bundle, its own defaults, same model/pack/FAST/128K; `tools/upbench.sh`) | generation 90.1 / 86.9 vs ours 109.2 / 108.5 (8K / 32K), prompt 2,603 / 3,419 vs 2,860 / 3,554; the fork's tuning env crashes it; its RDNA3 decode gains target IQ2_XS / NVFP4 experts, which this model doesn't use. Retest a newer release: unpack its `hip-rx7900` bundle to `~/work/strata/<ver>`, run `UP=~/work/strata/<ver> bash tools/upbench.sh` | no |
+| Mixed-format GEMV pair ([`patches/rdna-mix.patch`](patches/rdna-mix.patch), `STRATA_RDNA_MIX=0` = off): GDN q/k/v (Q6_K) + z (Q4_K), and the shared expert's gate + up when their formats differ, each as one launch | step −0.32 ms (18.53 → 18.21 ms verify, 8K); not bitwise (Q4_K/Q5_K on the RDNA kernel at 1–2 tokens), vs before top-1 100%, KL 0.00000, PPL 4.041 vs 4.040 (`tools/quality25.sh`) | yes |
+| Infinity Cache prefetch of the next layer's weights (graph side branch, or a persistent kernel beside the graph; `tools/mallbench.hip`) | warm reads run 1.2–2.0 TB/s vs ~0.75, but a graph branch costs ~65 µs a layer (−15%) and a concurrent kernel starves the hyper-connection read (−8% to −50%) | no |
+| `--pool-workers 16` (CPU experts, system RAM) | none (12 and 16 equal; 4 = −8%): the CPU side isn't what limits generation | no |
 | DFlash2 drafter (`--draft dflash2`, incoai/Qwen3.8-Flash-Next-DFlash2) | CLI only in this build; 2.5–2.7 vs 2.2 tokens a round but 85–97 vs 100 tok/s (wider windows cost more), 0.9 GB VRAM | no |
 
 The kernel changes are bit-identical to the engine's own kernels (checked on dumps and on the expert
-bench's real rows), except the wider RDNA Q4_K GEMV, which sums in a different order: teacher-forced against
-stock it keeps every top-1 token (KL 0.00001, `tools/quality18.sh`). Measured kernel facts behind them: a decode graph node costs ~2.8 µs (~3.2 ms of a 20 ms
+bench's real rows), except the wider RDNA Q4_K GEMV and the mixed-format pair, which sum in a different order:
+teacher-forced against stock they keep every top-1 token (KL 0.00001, `tools/quality18.sh`; KL 0.00000, `tools/quality25.sh`). Measured kernel facts behind them: a decode graph node costs ~2.8 µs (~3.2 ms of a 20 ms
 step); the hyper-connection read is DRAM-bound for its first ~8 µs and then a serial tail; the expert layouts'
 speed depends on the format and on entries per expert (`tools/expbench.sh`). rocprofv3 kernel times are not
 usable inside HIP graphs on ROCm 7.2.4 (graph kernels share end timestamps).
