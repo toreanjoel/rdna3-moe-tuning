@@ -102,3 +102,5 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
   90.1/86.9 tok/s, prompt 2603/3419 vs ours 109.2/108.5, 2860/3554. Fork env (STRATA_GR_RDNA etc.) segfaults it in
   fused_gr_read_multi capture. Its RDNA3 notes: IQ2_XS/NVFP4 LDS decode (em0=8), PF_F16=2 (fork already sets it),
   moe_p1a FL=3 (prefill). Nothing worth porting for our IQ3_S expert formats. Kept ours.
+  Bundle deleted afterwards (~/work/strata removed). To retest a future release: download its hip-rx7900 tarball to
+  ~/work/strata/<ver>, then `UP=~/work/strata/<ver> bash tools/upbench.sh` (stops/restarts the server, our engine untouched).

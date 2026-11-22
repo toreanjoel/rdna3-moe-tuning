@@ -212,7 +212,7 @@ would need more power. Raw output: [`snapshot/2026-11-22/sweep19.txt`](snapshot/
 | `STRATA_EXPDEC=1` gate/up (the RDNA4 default) | IQ3_XXS gate/up +7% slower on gfx1100 | no |
 | `--spec 3` / `5` / `6`, `--spec-min-p 0.7` | 108 / 112 / 114.5 / 112 (8K, 3 runs) | no |
 | `--spec-min-p 0.35`, `--mtp-q4 proj` (full-precision draft head) | bench 8K +6% / +5%, 32K −2% / −0.4%; varied chats ([`tools/chatbench.py`](tools/chatbench.py)) 126.0 → 123.0 / 124.6 | no |
-| Upstream Strata 0.2.19 engine (0.1.65 `hip-rx7900` bundle, its own defaults, same model/pack/FAST/128K; `tools/upbench.sh`) | generation 90.1 / 86.9 vs ours 109.2 / 108.5 (8K / 32K), prompt 2,603 / 3,419 vs 2,860 / 3,554; the fork's tuning env crashes it; its RDNA3 decode gains target IQ2_XS / NVFP4 experts, which this model doesn't use | no |
+| Upstream Strata 0.2.19 engine (0.1.65 `hip-rx7900` bundle, its own defaults, same model/pack/FAST/128K; `tools/upbench.sh`) | generation 90.1 / 86.9 vs ours 109.2 / 108.5 (8K / 32K), prompt 2,603 / 3,419 vs 2,860 / 3,554; the fork's tuning env crashes it; its RDNA3 decode gains target IQ2_XS / NVFP4 experts, which this model doesn't use. Retest a newer release: unpack its `hip-rx7900` bundle to `~/work/strata/<ver>`, run `UP=~/work/strata/<ver> bash tools/upbench.sh` | no |
 | DFlash2 drafter (`--draft dflash2`, incoai/Qwen3.8-Flash-Next-DFlash2) | CLI only in this build; 2.5–2.7 vs 2.2 tokens a round but 85–97 vs 100 tok/s (wider windows cost more), 0.9 GB VRAM | no |
 
 The kernel changes are bit-identical to the engine's own kernels (checked on dumps and on the expert
