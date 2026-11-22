@@ -94,5 +94,8 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
   2300/1450 112.9/111.6; 2300/1500 HARD CRASH on apply; 2700/1400 118.7/119.9; 3000/1400 121.6/122.5
   (power-limited at ~287 W, ~2505 MHz busy). Perf mode = SCLK=3000 MCLK=1400, opt-in only (user: whine, not default).
   Daily MCLK could move to 1400 (+2.7 tok/s, stable here) but the user hasn't decided; defaults unchanged.
+- More power (up to the card's 402 W) would likely give ~126-130 tok/s in perf mode; the user chose to bank 294 W.
+  `./strata-rdna3.sh perf` = SCLK 3000 / MCLK 1400. sweep19 takes POINTS="sclk:mclk:watts" if this is revisited
+  (strata-oc must then allow >294 and be reinstalled as root).
 - Strata 0.2.19 (upstream Niko1221/Strata, 2026-11-22) is NOT what we run: we pin nicejunjie/Strata-rdna3 6c2cd28b.
   Its "Qwen speed improvements" are untested here.

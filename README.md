@@ -7,6 +7,31 @@ within a 294 W power cap. One script installs, tunes, serves and benchmarks
 The model is 3–4× larger than VRAM. The engine keeps the most-used experts in VRAM (~90% hit rate), computes
 the rest on the CPU in parallel, and drafts 4 tokens ahead with an MTP head.
 
+## Summary
+
+| | daily (`serve`) | perf mode (`perf`, opt-in) |
+|---|---:|---:|
+| generation, 8K / 32K context | 111.0 / 109.6 tok/s | 121.6 / 122.5 tok/s |
+| clocks | core 2300, VRAM 1300 | core 3000, VRAM 1400 |
+| power | 294 W cap, ~230 W used | 294 W cap, ~287 W used (coil whine) |
+
+```bash
+./strata-rdna3.sh install   # once: deps, engine + kernel patches, model, expert pack
+./strata-rdna3.sh serve     # daily clocks, server on 127.0.0.1:8080 (HOST=0.0.0.0 for the LAN)
+./strata-rdna3.sh perf      # same server, perf clocks; run `serve` again to go back
+./strata-rdna3.sh status    # is it up, GPU power and VRAM
+./strata-rdna3.sh monitor   # live view (q leaves it running)
+./strata-rdna3.sh stop      # stop it (always stop before bench / quality)
+./strata-rdna3.sh bench     # 8K + 32K benchmark
+./strata-rdna3.sh build     # rebuild the engine with patches/ after changing them
+```
+
+Clock changes need root: install the passwordless helper once (`tools/strata-oc`, steps in its header).
+After a reboot the card sleeps until `serve` or `perf` wakes it. Running two benchmark or quality jobs
+at once has crashed the box, and VRAM 1500 MHz crashes it too.
+
+Everything below is detail: hardware, measurements, every setting and everything tried.
+
 ## The box
 
 | part | what |
@@ -102,6 +127,7 @@ task to try a tool against it.
 |---|---|
 | `install` | one-time setup (idempotent) |
 | `serve` | apply tuning, (re)start the server; survives logout |
+| `perf` | `serve` with perf clocks (core 3000, VRAM 1400), opt-in; [perf mode](#perf-mode-not-default) |
 | `stop` / `status` | stop it / port, process, GPU power and VRAM |
 | `monitor` | attach a live view (speed, requests, GPU); `q` detaches, server keeps running |
 | `speed` | follow each request's prompt and generation tok/s from the log |
@@ -136,7 +162,7 @@ Defaults are the measured best within the card's limits. Override any of them pe
 
 How far the card goes with the clocks uncapped, still at the 294 W cap and -50 mV. It runs at the
 power limit with coil whine, so it stays opt-in:
-`SCLK=3000 MCLK=1400 ./strata-rdna3.sh serve`. A plain `./strata-rdna3.sh serve` goes back to daily clocks.
+`./strata-rdna3.sh perf` (same as `SCLK=3000 MCLK=1400 ./strata-rdna3.sh serve`). A plain `./strata-rdna3.sh serve` goes back to daily clocks.
 Clock changes need root; `tools/strata-oc` is a passwordless helper (install steps in its header).
 
 | SCLK / MCLK | 8K tok/s | 32K tok/s | busy clock / power / hotspot |
