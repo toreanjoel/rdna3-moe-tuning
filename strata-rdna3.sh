@@ -127,17 +127,20 @@ tune() {
   od=$dev/pp_od_clk_voltage; hw=$(ls -d "$dev"/hwmon/hwmon* | head -1)
   [ -e "$od" ] || { echo "no $od: add amdgpu.ppfeaturemask=0xffffffff to GRUB"; return 1; }
   want="$SCLK $MCLK $VO $WATTS $EPP $BOOST"
-  have="$(grep -A2 OD_SCLK "$od" | sed -n 's/^1: *\([0-9]*\).*/\1/p') $(grep -A2 OD_MCLK "$od" | sed -n 's/^1: *\([0-9]*\).*/\1/p') \
-$(grep -A1 OD_VDDGFX_OFFSET "$od" | tail -1 | tr -dc '0-9-') $(( $(cat "$hw/power1_cap") / 1000000 )) \
+  # a runtime-suspended card (e.g. after a reboot) answers EBUSY: read as unknown, then the write path wakes it
+  have="$(grep -A2 OD_SCLK "$od" 2>/dev/null | sed -n 's/^1: *\([0-9]*\).*/\1/p') $(grep -A2 OD_MCLK "$od" 2>/dev/null | sed -n 's/^1: *\([0-9]*\).*/\1/p') \
+$(grep -A1 OD_VDDGFX_OFFSET "$od" 2>/dev/null | tail -1 | tr -dc '0-9-') $(( $(cat "$hw/power1_cap" 2>/dev/null || echo 0) / 1000000 )) \
 $(cat /sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference 2>/dev/null) $(cat /sys/devices/system/cpu/cpufreq/boost 2>/dev/null)"
   if [ "$(echo $have)" = "$want" ]; then echo "tuning already applied: sclk $SCLK mclk $MCLK vo $VO ${WATTS}W epp $EPP boost $BOOST"; return; fi
   echo "applying sclk $SCLK mclk $MCLK vo $VO ${WATTS}W epp $EPP boost $BOOST (was: $have)"
-  # one sudo shell: separate sudo tee calls lose OD writes on this box
-  sudo bash -c "echo on > $dev/power/control; echo r > $od; echo c > $od
+  # passwordless root helper (tools/strata-oc, install steps in its header) when present
+  if [ -x /usr/local/sbin/strata-oc ] && sudo -n /usr/local/sbin/strata-oc "$SCLK" "$MCLK" "$VO" "$WATTS" "$EPP" "$BOOST"; then :
+  # else one sudo shell: separate sudo tee calls lose OD writes on this box
+  else sudo bash -c "echo on > $dev/power/control; echo r > $od; echo c > $od
     echo 's 1 $SCLK' > $od; echo 'm 1 $MCLK' > $od; [ '$VO' = 0 ] || echo 'vo $VO' > $od; echo c > $od
     echo $(( WATTS * 1000000 )) > $hw/power1_cap
     for f in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do echo $EPP > \$f; done
-    [ -e /sys/devices/system/cpu/cpufreq/boost ] && echo $BOOST > /sys/devices/system/cpu/cpufreq/boost; true"
+    [ -e /sys/devices/system/cpu/cpufreq/boost ] && echo $BOOST > /sys/devices/system/cpu/cpufreq/boost; true"; fi
   grep -A2 -E 'OD_SCLK|OD_MCLK|OD_VDDGFX' "$od" | tr '\n' ' '; echo
 }
 

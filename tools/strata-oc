@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# strata-oc — root helper: wake the 7900 XTX and set SCLK/MCLK/voltage offset/power cap/CPU EPP+boost (validated, power cap never above 294 W)
+# install once:  sudo install -m 755 -o root tools/strata-oc /usr/local/sbin/strata-oc
+#                echo "$USER ALL=(root) NOPASSWD: /usr/local/sbin/strata-oc" | sudo tee /etc/sudoers.d/strata-oc
+# usage: sudo -n strata-oc SCLK MCLK VO WATTS EPP BOOST     (strata-rdna3.sh tune calls it when present)
+set -eu
+[ $# = 6 ] || { echo "usage: strata-oc SCLK MCLK VO WATTS EPP BOOST"; exit 2; }
+S=$1 M=$2 V=$3 W=$4 E=$5 B=$6
+num() { [[ $1 =~ ^-?[0-9]+$ ]] || { echo "bad number: $1"; exit 2; }; }
+num "$S"; num "$M"; num "$V"; num "$W"; num "$B"
+[ "$S" -ge 500 ] && [ "$S" -le 3200 ] || { echo "SCLK $S out of 500..3200"; exit 2; }
+[ "$M" -ge 97 ] && [ "$M" -le 1500 ] || { echo "MCLK $M out of 97..1500"; exit 2; }
+[ "$V" -ge -150 ] && [ "$V" -le 0 ] || { echo "VO $V out of -150..0"; exit 2; }
+[ "$W" -ge 100 ] && [ "$W" -le 294 ] || { echo "WATTS $W out of 100..294"; exit 2; }
+case $E in performance|balance_performance|balance_power|power|default) ;; *) echo "bad EPP $E"; exit 2;; esac
+case $B in 0|1) ;; *) echo "bad BOOST $B"; exit 2;; esac
+dev=
+for c in /sys/class/drm/card*/device; do [ "$(cat "$c/device" 2>/dev/null)" = 0x744c ] && { dev=$c; break; }; done
+[ -n "$dev" ] || { echo "7900 XTX (0x744c) not found"; exit 1; }
+od=$dev/pp_od_clk_voltage; hw=$(ls -d "$dev"/hwmon/hwmon* | head -1)
+echo on > "$dev/power/control"; sleep 1
+echo r > "$od"; echo c > "$od"
+echo "s 1 $S" > "$od"; echo "m 1 $M" > "$od"; [ "$V" = 0 ] || echo "vo $V" > "$od"; echo c > "$od"
+echo $(( W * 1000000 )) > "$hw/power1_cap"
+for f in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do echo "$E" > "$f"; done
+[ -e /sys/devices/system/cpu/cpufreq/boost ] && echo "$B" > /sys/devices/system/cpu/cpufreq/boost
+true
