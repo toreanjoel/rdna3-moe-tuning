@@ -1,0 +1,19 @@
+== s12old1  XENV=[STRATA_EXP_AUTO=5]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2858    2436   1.17     110.5  119.0   0.93
+all 5 requests passed
+== s12new1  XENV=[STRATA_EXP_AUTO=1]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2860    2436   1.17     110.8  119.0   0.93
+all 5 requests passed
+== s12old2  XENV=[STRATA_EXP_AUTO=5]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2860    2436   1.17     110.6  119.0   0.93
+all 5 requests passed
+== s12new2  XENV=[STRATA_EXP_AUTO=1]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2858    2436   1.17     110.8  119.0   0.93
+all 5 requests passed
+sweep12 done
+
+[exited with code 0]
