@@ -1,0 +1,88 @@
+diff --git a/src/kernels/cuda/iq_kernels.cu b/src/kernels/cuda/iq_kernels.cu
+index 2c39235b..53c80026 100644
+--- a/src/kernels/cuda/iq_kernels.cu
++++ b/src/kernels/cuda/iq_kernels.cu
+@@ -4863,7 +4863,45 @@ __global__ void __launch_bounds__(256) native_down_lds_kernel(const unsigned lon
+ // [r0, r0 + 32): gate rows r0.. and up rows r0.. (64 weight rows, the same per-(row, entry) sums as mode 7), so
+ // one 32-lane warp per entry holds exactly one q8_1 block of h and runs quantize_q8_1_kernel's own code on it -
+ // bitwise the separate kernels' hq, two launches fewer per call.
+-template<int TG>
++// rdna3-moe-tuning STRATA_GU_N: DotG<22, 1> for NT token rows at once - the weight words (grid rows, sign masks, scales)
++// decoded once, then each row's dp4a chain exactly as DotG<22, 1> (integer sums, the same float d * sumi)
++template<int NT>
++__device__ __forceinline__ void dotg22_n(const void* vbq, const block_q8_1* x0, int xb, int kbx, int iqs,
++                                         const uint64_t* grid, float (&r)[NT]) {
++    const block_iq2_s* bq2 = (const block_iq2_s*) vbq + kbx;
++    const int qs_packed = get_int_b2(bq2->qs, iqs / 2);
++    const uint8_t* qs = (const uint8_t*) &qs_packed;
++    const int qh = bq2->qh[iqs / 2];
++    const int signs_packed_32 = get_int_b2(bq2->qs, QK_K / 32 + iqs / 2);
++    const uint8_t* signs_packed_8 = (const uint8_t*) &signs_packed_32;
++    const int ls0 = bq2->scales[iqs / 2] & 0x0F;
++    const int ls1 = bq2->scales[iqs / 2] >> 4;
++    int gw[8], mw[8];
++#pragma unroll
++    for (int l0 = 0; l0 < 8; l0 += 2) {
++        const int* grid_pos = (const int*) (grid + (qs[l0 / 2] | ((qh << (8 - l0)) & 0x300)));
++        const int m0 = nib_mask(signs_packed_8[l0 / 2]), m1 = nib_mask(signs_packed_8[l0 / 2] >> 4);
++        gw[l0] = (grid_pos[0] ^ m0) + (m0 & 0x01010101); gw[l0 + 1] = (grid_pos[1] ^ m1) + (m1 & 0x01010101); (void) mw;
++    }
++    const float dw = __half2float(bq2->d);
++#pragma unroll
++    for (int j = 0; j < NT; ++j) {
++        const block_q8_1* bq8_1 = x0 + (size_t) j * xb;
++        int sumi0 = 0, sumi1 = 0;
++#pragma unroll
++        for (int l0 = 0; l0 < 8; l0 += 2) {
++            const int u0 = get_int_b4(bq8_1[iqs / 2].qs, l0 + 0);
++            const int u1 = get_int_b4(bq8_1[iqs / 2].qs, l0 + 1);
++            int& acc = l0 < 4 ? sumi0 : sumi1;
++            acc = ggml_cuda_dp4a(gw[l0], u0, acc);
++            acc = ggml_cuda_dp4a(gw[l0 + 1], u1, acc);
++        }
++        const int sumi = (sumi0 * ls0 + sumi1 * ls1 + (sumi0 + sumi1) / 2) / 4;
++        const float d = dw * __low2float(bq8_1[iqs / 2].ds);
++        r[j] = d * sumi;
++    }
++}
++template<int TG, bool GN = false>
+ __global__ void __launch_bounds__(256) native_gu_fused_kernel(const unsigned long long* __restrict__ grp_ptr,
+                                                               const int32_t* __restrict__ grp_start,
+                                                               const int32_t* __restrict__ n_groups,
+@@ -4907,6 +4945,13 @@ __global__ void __launch_bounds__(256) native_gu_fused_kernel(const unsigned lon
+                 for (int j = 0; j < NTC; ++j) { s0[j] = 0.0f; s1[j] = 0.0f; }
+                 for (int k = lane; k < nb * F::ipb; k += 32) {
+                     const int kbx = k / F::ipb, iqs = F::step * (k % F::ipb);
++                    if constexpr (TG == 22 && GN && NTC >= 2) {
++                        float a[NTC], b[NTC];
++                        dotg22_n<NTC>(w0, sx + kbx * (F::qk / 32), xb, kbx, iqs, sgrid, a);
++                        dotg22_n<NTC>(w1, sx + kbx * (F::qk / 32), xb, kbx, iqs, sgrid, b);
++#pragma unroll
++                        for (int j = 0; j < NTC; ++j) { s0[j] += a[j]; s1[j] += b[j]; }
++                    } else {
+ #pragma unroll
+                     for (int j = 0; j < NTC; ++j) {
+                         const block_q8_1* xk = sx + (size_t) j * xb + kbx * (F::qk / 32);
+@@ -4915,6 +4960,7 @@ __global__ void __launch_bounds__(256) native_gu_fused_kernel(const unsigned lon
+                         s0[j] += a;
+                         s1[j] += b;
+                     }
++                    }
+                 }
+ #pragma unroll
+                 for (int j = 0; j < NTC; ++j) {
+@@ -5172,7 +5218,13 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
+             case 18: native_gu_fused_kernel<18><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, hq); break;
+             case 21: native_gu_fused_kernel<21><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, hq); break;
+             case 23: native_gu_fused_kernel<23><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, hq); break;
+-            default: native_gu_fused_kernel<22><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, hq); break;
++            default: {
++                // rdna3-moe-tuning STRATA_GU_N (=0 off): IQ2_S weight words decoded once per window row set
++                static const bool gn = [] { const char* v = std::getenv("STRATA_GU_N"); return v == nullptr || v[0] != '0'; }();
++                if (gn) native_gu_fused_kernel<22, true><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, hq);
++                else native_gu_fused_kernel<22><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, hq);
++                break;
++            }
+         }
+         check("native_expert_grouped/gu fused");
+     }

@@ -137,6 +137,16 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
   ~0.6 us a layer. A removed launch inside the graph is worth well under 1 us here; the gaps are the dependent chain's
   per-kernel latency, not launch issue. More launch merging only pays where it also shortens the chain.
 
+## IQ2_S gate/up pre-signed 2026-11-22 (patches/gu-n.patch, STRATA_GU_N default on, =0 off; sweep26, sweep27, expbench-gn*)
+- STRATA_GU_SWIGLU=1 (the 512-thread gate/up + SwiGLU + q8_1 kernel, bitwise): +0.3 ms/window slower here (sweep26). Dropped.
+- Production expert kernels (tools/knames.py on kprof-k4): IQ2_S gate/up = native_gu_fused_kernel<22> (20 layers), IQ3_XXS /
+  IQ3_S = native_gu_multi_kernel + swiglu_q8_1_entries, IQ4_NL down = native_down_multi_kernel<20>, Q2_0 = expdec_down<42,2>.
+- IQ2_S was the outlier: DotG<22,1> applies signs per token (12 dp4a); IQ3_* already pre-sign. dotg22_n signs the grid
+  words once per row ((g ^ m) + (m & 0x01010101); iq2s_grid bytes are only 8/25/43, no carry) -> 8 dp4a a token. Exact
+  integer sums -> bitwise (expbench "bitwise equal", answers SAME). Isolated gu at 20 groups: T1 43 = 43 us (path kept
+  for 1-token passes: the pre-signed one was +1.5 us there), T2 55 -> 48-49, T3 73 -> 61. End to end -0.03 ms/window
+  (18.23/18.22 -> 18.19/18.21). 4 rows a warp pass (more loads in flight): no gain, dropped.
+
 ## Dense GEMVs at the model's real shapes 2026-11-22 (patches/bench-shapes.patch adds them to claude_bench mmvq; tools/gguf_tensors.py)
 - Per layer: GDN qkv Q6_K 2560->10240, z (attn_gate) Q4_K 2560->6144, ssm_out Q6_K 6144->2560, alpha/beta bf16 2560->48;
   QSA q IQ4_XS 2560->12288, k/v Q6_K 2560->512, output Q4_K 6144->2560; shexp gate/up Q4_K / IQ4_XS 2560->640, down IQ4_NL.
