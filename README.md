@@ -1,6 +1,6 @@
 # rdna3-moe-tuning
 
-Run **Qwen3.8-Flash-Next (IQ3_S, 82 GB MoE)** on a **single RX 7900 XTX (24 GB)** at **~110 tok/s**,
+Run **Qwen3.8-Flash-Next (IQ3_S, 82 GB MoE)** on a **single RX 7900 XTX (24 GB)** at **~111 tok/s**,
 within a 294 W power cap. One script installs, tunes, serves and benchmarks
 [Strata-rdna3](https://github.com/nicejunjie/Strata-rdna3), a gfx1100-tuned fork of the Strata engine.
 
@@ -24,9 +24,9 @@ Single user, distinct prompts, 256 generated tokens, median of 5 runs, greedy.
 ```mermaid
 xychart-beta
     title "Generation speed on this box (tok/s)"
-    x-axis ["llama.cpp Vulkan", "llama.cpp ROCm", "Strata (stock)", "Strata-rdna3", "+ FAST (default)"]
+    x-axis ["llama.cpp Vulkan", "llama.cpp ROCm", "Strata (stock)", "Strata-rdna3", "+ FAST + kernels (default)"]
     y-axis "tok/s" 0 --> 120
-    bar [13, 25, 80, 103, 110]
+    bar [13, 25, 80, 103, 111]
 ```
 
 ```mermaid
@@ -39,7 +39,8 @@ xychart-beta
 
 | | prompt 8K | prompt 32K | generation 8K / 32K |
 |---|---:|---:|---:|
-| **this repo, `FAST=1` (default)** | **2,860** | **3,555** | **109–111 / 109** |
+| **this repo, `FAST=1` + kernel patches (default)** | **2,860** | **3,556** | **111 / 111.5** |
+| this repo, `FAST=1`, before the kernel patches | 2,860 | 3,555 | 109–111 / 109 |
 | this repo, `FAST=0` (exact answers) | 2,840 | 3,553 | 101 / 103 |
 | fork's shipped config | 2,641 | 3,266 | 103–104 |
 | fork author (9950X3D2, DDR5-6000) | 2,436 | 3,541 | 114–119 |
@@ -69,7 +70,7 @@ pie title GPU time per step (21.7 ms, profiled)
 
 Raw numbers: [`snapshot/2026-11-21/`](snapshot/2026-11-21/) (stock Strata, llama.cpp, first fork sweeps),
 [`snapshot/2026-11-22/`](snapshot/2026-11-22/) (CPU kernel / routing sweep with quality check, engine-switch
-sweep, profile).
+sweep, profile, kernel benches and sweeps 7–11, `bench-final.log`).
 
 ## Install
 
@@ -155,6 +156,17 @@ Defaults are the measured best within the card's limits. Override any of them pe
 | `STRATA_COPY_HIP_PRIO=1`, `--host-core sibling` | −3% / none | no |
 | higher core clock (no SCLK cap) | ~+1 tok/s, coil whine | no |
 | llama.cpp (Vulkan, ROCm) | 4–8× slower generation | no |
+| `HIP_FORCE_DEV_KERNARG=1`, `DEBUG_CLR_GRAPH_PACKET_CAPTURE=0` | none | no |
+| `STRATA_RDNA_PAIR=1` (shared expert's gate + up in one GEMV) | 108.8 → 109.4, same answers | yes |
+| `STRATA_GR_TAIL=1` ([`patches/gr-tail.patch`](patches/gr-tail.patch): hyper-connection read's serial tail) | 0.3–2.3 µs less per read; with PAIR 108.8 → 109.9, same answers | yes |
+| `STRATA_EXP_AUTO=1` ([`patches/exp-auto.patch`](patches/exp-auto.patch): IQ2_S gate/up fused, Q2_0 down in LDS) | 109.7 → 110.7, same answers | yes |
+| `STRATA_LFUSE=1`; hc read with the up weights preloaded | none | no |
+
+The three kernel changes are bit-identical to the engine's own kernels (checked on dumps and on the expert
+bench's real rows). Measured kernel facts behind them: a decode graph node costs ~2.8 µs (~3.2 ms of a 20 ms
+step); the hyper-connection read is DRAM-bound for its first ~8 µs and then a serial tail; the expert layouts'
+speed depends on the format and on entries per expert (`tools/expbench.sh`). rocprofv3 kernel times are not
+usable inside HIP graphs on ROCm 7.2.4 (graph kernels share end timestamps).
 
 Next: the GPU side of a step ([profile](#where-a-generation-steps-time-goes)). Left out on purpose: higher clocks or
 power, and 47 GB of reserved huge pages (transparent huge pages already back ~52 GB of the expert arena).
@@ -166,5 +178,6 @@ power, and 47 GB of reserved huge pages (transparent huge pages already back ~52
 | `strata-rdna3.sh` | the script |
 | `tools/` | benchmark sweeps, quality check (`quality.sh`, `humaneval.py`), API smoke test |
 | `examples/shop-cart/` | a small coding task for trying a tool against the server |
+| `patches/` | engine kernel patches, applied on top of the pinned fork by `./strata-rdna3.sh build`, each behind its own switch |
 | `snapshot/<date>/` | raw measurements behind every number here |
 | [`docs/history-stock-strata.md`](docs/history-stock-strata.md) | the stock-Strata investigation (clocks, power, decode ladder) |

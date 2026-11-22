@@ -1,0 +1,49 @@
+== groups 24 tok/group 1 mode 3
+hash 8dfc7e8def6f3fa9
+layer  0 iq3_xxs/iq4_nl G 24 T 1 | mode 0: all    88.4 us  gu    53.2 us (566 GB/s)  down   35.6 us (621 GB/s) | mode 3: all    88.8 us  gu    53.1 us (567 GB/s)  down   35.9 us (617 GB/s) | bitwise equal
+hash d249e6c08877f217
+layer 12 iq3_xxs/q2_0   G 24 T 1 | mode 0: all    82.5 us  gu    53.4 us (564 GB/s)  down   29.7 us (372 GB/s) | mode 3: all    87.9 us  gu    53.0 us (569 GB/s)  down   35.0 us (316 GB/s) | bitwise equal
+hash a59637bb860b3b62
+layer 24 iq2_s  /iq4_nl G 24 T 1 | mode 0: all    84.5 us  gu    47.4 us (531 GB/s)  down   35.9 us (615 GB/s) | mode 3: all    95.4 us  gu    59.4 us (424 GB/s)  down   36.2 us (612 GB/s) | bitwise equal
+hash 00c4ac866d9529ab
+layer 36 iq2_s  /q2_0   G 24 T 1 | mode 0: all    77.8 us  gu    47.4 us (532 GB/s)  down   29.6 us (374 GB/s) | mode 3: all    95.3 us  gu    58.3 us (432 GB/s)  down   35.7 us (310 GB/s) | bitwise equal
+hash 7963892674aa5fca
+layer 47 iq4_xs /iq4_nl G 24 T 1 | mode 0: all    92.8 us  gu    57.4 us (728 GB/s)  down   36.2 us (611 GB/s) | mode 3: all    93.2 us  gu    57.4 us (728 GB/s)  down   36.1 us (612 GB/s) | bitwise equal
+native_expert_bench: 0 differing
+== groups 24 tok/group 2 mode 3
+hash 99989d3ef9b8fb5b
+layer  0 iq3_xxs/iq4_nl G 24 T 2 | mode 0: all    96.9 us  gu    61.1 us (492 GB/s)  down   39.4 us (561 GB/s) | mode 3: all    97.6 us  gu    60.1 us (501 GB/s)  down   39.5 us (560 GB/s) | bitwise equal
+hash 19eccc13d350c4a1
+layer 12 iq3_xxs/q2_0   G 24 T 2 | mode 0: all   112.4 us  gu    60.5 us (497 GB/s)  down   51.1 us (216 GB/s) | mode 3: all    99.8 us  gu    60.5 us (498 GB/s)  down   40.0 us (277 GB/s) | bitwise equal
+hash 87eb88fb23e98554
+layer 24 iq2_s  /iq4_nl G 24 T 2 | mode 0: all   102.5 us  gu    60.1 us (419 GB/s)  down   39.7 us (557 GB/s) | mode 3: all   108.4 us  gu    68.7 us (367 GB/s)  down   39.6 us (559 GB/s) | bitwise equal
+hash d7e6b09155dce4e4
+layer 36 iq2_s  /q2_0   G 24 T 2 | mode 0: all   110.3 us  gu    61.1 us (412 GB/s)  down   52.4 us (211 GB/s) | mode 3: all   108.4 us  gu    69.9 us (360 GB/s)  down   41.0 us (270 GB/s) | bitwise equal
+hash d3f7e0d2a24b44b5
+layer 47 iq4_xs /iq4_nl G 24 T 2 | mode 0: all   104.0 us  gu    64.2 us (650 GB/s)  down   39.8 us (556 GB/s) | mode 3: all   104.1 us  gu    63.8 us (655 GB/s)  down   39.9 us (554 GB/s) | bitwise equal
+native_expert_bench: 0 differing
+== groups 48 tok/group 1 mode 3
+hash e67e01a5b6900251
+layer  0 iq3_xxs/iq4_nl G 48 T 1 | mode 0: all   177.3 us  gu    97.2 us (619 GB/s)  down   67.0 us (660 GB/s) | mode 3: all   177.3 us  gu    97.1 us (620 GB/s)  down   67.4 us (657 GB/s) | bitwise equal
+hash 897d480bd5b9d2d8
+layer 12 iq3_xxs/q2_0   G 48 T 1 | mode 0: all   151.2 us  gu    97.8 us (616 GB/s)  down   53.5 us (413 GB/s) | mode 3: all   160.4 us  gu    97.7 us (616 GB/s)  down   62.6 us (353 GB/s) | bitwise equal
+hash 4e7222b3e0ec0bd0
+layer 24 iq2_s  /iq4_nl G 48 T 1 | mode 0: all   161.3 us  gu    92.6 us (544 GB/s)  down   64.9 us (681 GB/s) | mode 3: all   174.9 us  gu   109.6 us (459 GB/s)  down   64.8 us (683 GB/s) | bitwise equal
+hash f813636197ade6bd
+layer 36 iq2_s  /q2_0   G 48 T 1 | mode 0: all   143.4 us  gu    89.8 us (561 GB/s)  down   53.6 us (413 GB/s) | mode 3: all   172.3 us  gu   109.7 us (459 GB/s)  down   62.7 us (353 GB/s) | bitwise equal
+hash 998e18d9ebf50015
+layer 47 iq4_xs /iq4_nl G 48 T 1 | mode 0: all   197.0 us  gu   105.7 us (790 GB/s)  down   67.4 us (657 GB/s) | mode 3: all   196.6 us  gu   106.0 us (788 GB/s)  down   67.5 us (656 GB/s) | bitwise equal
+native_expert_bench: 0 differing
+== groups 48 tok/group 2 mode 3
+hash 048bb4fc1bd3b6d1
+layer  0 iq3_xxs/iq4_nl G 48 T 2 | mode 0: all   196.0 us  gu   111.5 us (540 GB/s)  down   76.2 us (580 GB/s) | mode 3: all   196.1 us  gu   111.4 us (540 GB/s)  down   76.2 us (580 GB/s) | bitwise equal
+hash 510af96e0b709181
+layer 12 iq3_xxs/q2_0   G 48 T 2 | mode 0: all   208.8 us  gu   111.5 us (540 GB/s)  down   95.8 us (231 GB/s) | mode 3: all   187.2 us  gu   110.9 us (543 GB/s)  down   76.4 us (290 GB/s) | bitwise equal
+hash c6beaeff2c5438b6
+layer 24 iq2_s  /iq4_nl G 48 T 2 | mode 0: all   196.6 us  gu   115.1 us (438 GB/s)  down   76.2 us (580 GB/s) | mode 3: all   206.9 us  gu   126.1 us (399 GB/s)  down   76.3 us (580 GB/s) | bitwise equal
+hash a2a8c99f627c2fea
+layer 36 iq2_s  /q2_0   G 48 T 2 | mode 0: all   211.9 us  gu   113.5 us (444 GB/s)  down   95.4 us (232 GB/s) | mode 3: all   201.8 us  gu   127.0 us (397 GB/s)  down   74.7 us (296 GB/s) | bitwise equal
+hash c731b1886d9f69bf
+layer 47 iq4_xs /iq4_nl G 48 T 2 | mode 0: all   210.6 us  gu   119.8 us (697 GB/s)  down   78.7 us (562 GB/s) | mode 3: all   209.8 us  gu   119.5 us (699 GB/s)  down   78.8 us (562 GB/s) | bitwise equal
+native_expert_bench: 0 differing
+expbench done

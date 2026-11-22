@@ -1,0 +1,35 @@
+diff --git a/src/kernels/cuda/iq_kernels.cu b/src/kernels/cuda/iq_kernels.cu
+index c8f60b61..5ef03817 100644
+--- a/src/kernels/cuda/iq_kernels.cu
++++ b/src/kernels/cuda/iq_kernels.cu
+@@ -5145,11 +5145,20 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
+ #if STRATA_EXP_LAYOUTS
+ #if defined(STRATA_HIP_GFX906)
+     const int em0 = exp_mode();
++    const int em0_down = em0;
+ #else
+     // CUDA: the AMD layouts launch a block row per possible group, so a call that strides (a verify window's PCIe
+     // call, grid_groups 1..cap) keeps the CUDA layout: V100, 0 groups 11.3 vs 6.5 us, 1 group of 2 29.6 vs 21.3
+-    const int em0 = (grid_groups > 0 && grid_groups < cap_groups) ? 0 : exp_mode();
++    const int em0_base = (grid_groups > 0 && grid_groups < cap_groups) ? 0 : exp_mode();
+ #endif
++    // rdna3-moe-tuning STRATA_EXP_AUTO (gfx1100, native_expert_bench on the IQ3_S pack's rows, 24 groups): where the mode
++    // is 0, Q2_0 down takes mode 8's LDS kernel (-15% at 1 entry a group, even at 2-3) and IQ2_S gate/up mode 9's fused
++    // gate/up + SwiGLU + q8_1 (-17% / -12% at 1 / 2 entries a group, +10% at 3); IQ3_XXS / IQ4_XS gate/up and IQ4_NL down
++    // keep mode 0.  =2: IQ3_XXS gate/up fused too; =3: the gate/up part only; =4: the down part only.  Bitwise mode 0.
++    static const int exp_auto = [] { const char* v = std::getenv("STRATA_EXP_AUTO"); return v ? std::atoi(v) : 0; }();
++    const bool auto_on = exp_auto > 0 && em0_base == 0 && !(grid_groups > 0 && grid_groups < cap_groups);   // not the strided PCIe call
++    const int em0 = auto_on && exp_auto != 4 && (L.gu_type == 22 || (exp_auto == 2 && L.gu_type == 18)) ? 9 : em0_base;
++    const int em0_down = auto_on && exp_auto != 3 && L.d_type == 42 ? 8 : em0_base;
+ #endif
+ #if STRATA_EXP_LAYOUTS
+     // [claude] 9: mode 8's fused gate/up + SwiGLU + q8_1 with the default down kernel
+@@ -5257,7 +5266,7 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
+     const int tq_ch = tq_sub8 ? tq_row_chunks() : 1;   // the staged trellis down kernel takes this many 32-row chunks a block
+     const dim3 gd((unsigned) (((L.n_embd + d_rows - 1) / d_rows + tq_ch - 1) / tq_ch), (unsigned) gy);
+ #if STRATA_EXP_LAYOUTS
+-    const int em0d = sm75_down_em(em0, cap_groups);
++    const int em0d = sm75_down_em(em0_down, cap_groups);
+     int dev_d = 0;
+     cudaGetDevice(&dev_d);
+     // gfx1151: the LDS down kernel is slower than the CUDA layout for IQ4_NL (86 vs 63 us, 24 groups) and faster for Q2_0 (-18%)

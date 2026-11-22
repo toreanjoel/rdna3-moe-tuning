@@ -27,9 +27,10 @@ TABLE=${TABLE:-$SRC/tools/hip/gfx1100-hipblaslt-100202.txt}
 # ./strata-rdna3.sh quality measures FAST against exact on this box.
 FAST=${FAST:-1}; FASTENV=""; [ "$FAST" = 1 ] && FASTENV="STRATA_ROUTE_TAIL_SKIP=7"
 CTX=${CTX:-131072}                                     # max context (the fork ships 262144)
-# bit-identical launch savings (sweep10, +1% decode): the shared expert's gate+up in one GEMV, and the hc read's shorter
-# serial tail (STRATA_GR_TAIL needs patches/gr-tail.patch: ./strata-rdna3.sh build; an unpatched engine ignores it)
-KERNENV="STRATA_RDNA_PAIR=1 STRATA_GR_TAIL=1"
+# bit-identical kernel choices (+2% decode, sweeps 10-11): the shared expert's gate+up in one GEMV, the hc read's shorter
+# serial tail, per-format expert layouts.  GR_TAIL / EXP_AUTO need patches/*.patch (./strata-rdna3.sh build); an
+# unpatched engine ignores them
+KERNENV="STRATA_RDNA_PAIR=1 STRATA_GR_TAIL=1 STRATA_EXP_AUTO=1"
 export STRATA_X_ENV="STRATA_HIPBLASLT_TUNING=$TABLE $KERNENV $FASTENV ${XENV:-}" STRATA_X_ARGS="--max-context $CTX ${XARGS:-}"
 
 # setup.py moves the models of every Strata install listed in ~/.config/strata; a private config stops that.
@@ -79,6 +80,8 @@ install() {
   fi
 
   patch_fork
+  say "kernel patches (patches/*.patch) + rebuild"
+  (build_engine)
   say "done"; du -sh "$SRC" "$D"/packs "$D"/mtp 2>/dev/null
 }
 

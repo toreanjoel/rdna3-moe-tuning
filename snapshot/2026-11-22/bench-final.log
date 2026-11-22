@@ -1,0 +1,19 @@
+iq3-1gpu: building the exact prompts ...
+iq3-1gpu: ready after 19.0 s
+       n8192-r0  prefill    2716  decode  104.1  pass
+       n8192-r1  prefill    2861  decode  117.5  pass
+       n8192-r2  prefill    2862  decode  110.7  pass
+       n8192-r3  prefill    2858  decode  110.5  pass
+       n8192-r4  prefill    2860  decode  116.2  pass
+      n32768-r0  prefill    3611  decode  112.5  pass
+      n32768-r1  prefill    3556  decode  108.2  pass
+      n32768-r2  prefill    3555  decode  112.2  pass
+      n32768-r3  prefill    3548  decode  107.4  pass
+      n32768-r4  prefill    3558  decode  111.5  pass
+
+iq3-1gpu  tokens/s, median of 5 (reference: rdna3/reference.json)
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2860    2436   1.17     110.7  119.0   0.93
+   32768      3556    3541   1.00     111.5  114.1   0.98
+all 10 requests passed
+FINALDONE

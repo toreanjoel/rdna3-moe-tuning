@@ -1,0 +1,33 @@
+== s11base1  XENV=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2854    2436   1.17     109.7  119.0   0.92
+all 3 requests passed
+== s11auto1  XENV=[STRATA_EXP_AUTO=1]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2857    2436   1.17     110.7  119.0   0.93
+all 3 requests passed
+== s11down1  XENV=[STRATA_EXP_AUTO=4]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2854    2436   1.17     110.0  119.0   0.92
+all 3 requests passed
+== s11gu1  XENV=[STRATA_EXP_AUTO=3]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2856    2436   1.17     110.5  119.0   0.93
+all 3 requests passed
+== s11base2  XENV=[]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2857    2436   1.17     109.7  119.0   0.92
+all 3 requests passed
+== s11auto2  XENV=[STRATA_EXP_AUTO=1]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2859    2436   1.17     110.7  119.0   0.93
+all 3 requests passed
+== s11down2  XENV=[STRATA_EXP_AUTO=4]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2856    2436   1.17     110.0  119.0   0.92
+all 3 requests passed
+== s11gu2  XENV=[STRATA_EXP_AUTO=3]
+   input   prefill     ref  ratio    decode    ref  ratio
+    8192      2859    2436   1.17     110.4  119.0   0.93
+all 3 requests passed
+sweep11 done
