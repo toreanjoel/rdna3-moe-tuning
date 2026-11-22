@@ -47,15 +47,15 @@ Everything below is detail: hardware, measurements, every setting and everything
 Single user, distinct prompts, 256 generated tokens, median of 5 runs, greedy.
 
 ```mermaid
-xychart-beta
-    title "Generation speed on this box (tok/s)"
-    x-axis ["llama.cpp Vulkan", "llama.cpp ROCm", "Strata (stock)", "Strata-rdna3", "+ FAST + kernels (default)"]
-    y-axis "tok/s" 0 --> 120
-    bar [13, 25, 80, 103, 111]
+xychart-beta horizontal
+    title "Generation speed on this box, 8K context (tok/s)"
+    x-axis ["llama.cpp Vulkan", "llama.cpp ROCm", "Strata (stock)", "Strata-rdna3 (fork config)", "this repo, daily (default)", "this repo, perf mode (opt-in)"]
+    y-axis "tok/s" 0 --> 130
+    bar [13, 25, 80, 103, 111, 122]
 ```
 
 ```mermaid
-xychart-beta
+xychart-beta horizontal
     title "Prompt reading, 32K tokens (tok/s)"
     x-axis ["Strata (stock)", "Strata-rdna3 (fork config)", "Strata-rdna3 (this repo)"]
     y-axis "tok/s" 0 --> 4000
@@ -78,8 +78,9 @@ on this box log 122–137 tok/s generation (`./strata-rdna3.sh speed`).
 
 ### Where a generation step's time goes
 
-One step verifies the MTP drafts and keeps ~2.1 tokens in ~20 ms. The GPU is the limit: it waits on the CPU's
-experts for only ~1% of the step, so faster CPU code or more RAM bandwidth would barely help. GPU time per step
+One step verifies the MTP drafts and keeps ~2.1 tokens in ~20 ms. The GPU is the limit. Most of "copy + combine"
+is the GPU waiting on the ~2 experts a layer that miss VRAM; the CPU pool already runs them near this box's RAM
+bandwidth ceiling (~50 GB/s), so faster CPU code would barely help. GPU time per step
 (8K context, `STRATA_DECODE_TIMING=1 STRATA_VERIFY_PROFILE=1`):
 
 ```mermaid
