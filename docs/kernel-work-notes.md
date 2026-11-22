@@ -78,8 +78,18 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
   draft 1.55, waits 1.1, experts 1.1 (596 GB/s), head 0.06 (at roofline). CPU RAM bandwidth is not the limit (GPU waits ~1%).
 - sweep20: STRATA_MEGAKERNEL=1 is a no-op here: the persistent GDN kernel (megakernel_gdn.cu, bitwise the six nodes) only
   covers Q8_0 projections; ours are Q6_K qkv / Q4_K z / Q6_K out ("types 14/12/14"). SIDE_MIXER=1 97.5, =2 82.3 vs 109.3 (worse).
-- Plan: (1) megakernel GDN with Q6_K/Q4_K bodies (biggest gap, 36 layers x 6 nodes); (2) HC + router + shared + combine
-  folds; (3) draft head cost; each behind a switch, bitwise check, end-to-end A/B.
+- mk_gdn_parity at one card's geometry (patches/mk-parity-geom.patch: STRATA_MK_HK=16 STRATA_MK_HV=48; Q8_0 weights,
+  STRATA_MK_REFSPLIT=1 splits per kernel; snapshot/2026-11-22/mk-gdn-parity.txt): six kernels 99.9 / 108.6 us a layer
+  (T1 / T3), persistent 101.8 / 104.6 -> the megakernel saves ~0 on gfx1100 (graph node cost is small here). The GEMVs
+  inside are already near roofline (qkv Q8_0 27.9 MB in 34 us = 820 GB/s). DROPPED: porting Q6_K/Q4_K into it.
+- Real stage split (sweep6-profile, ms/window): the gaps are latency-bound small kernels, not big GEMVs:
+  router+plan+bell 1.03 + 0.35 and shared+quant 1.05 + 0.35 (~29 us a layer for ~3.5 MB -> ~2.6 ms vs ~0.2 floor);
+  hc down/up ~15 us each for 3.3 MB (3.4 ms vs 0.8); copy+combine 0.8-2.4; z Q4_K 0.96 (floor 0.39); QSA misc ~2.5.
+- Honest ceiling: removing most latency gaps (horizontal fusion: router + shexp gate/up in one launch over the same
+  input, hc folds, combine folds) is worth ~3-4 ms of ~20 -> ~130-135 tok/s daily (~145 perf mode). 200 also needs
+  ~3 tokens kept a step; MTP keeps 2.1 and DFlash2 (2.5-2.7) costs more than it keeps (sweep13).
+- Next: (1) router GEMV + shared gate/up as one multi-matrix launch (largest latency gap); (2) hc folds; (3) combine;
+  each behind a switch, bitwise check, end-to-end A/B.
 
 ## Dense GEMVs at the model's real shapes 2026-11-22 (patches/bench-shapes.patch adds them to claude_bench mmvq; tools/gguf_tensors.py)
 - Per layer: GDN qkv Q6_K 2560->10240, z (attn_gate) Q4_K 2560->6144, ssm_out Q6_K 6144->2560, alpha/beta bf16 2560->48;

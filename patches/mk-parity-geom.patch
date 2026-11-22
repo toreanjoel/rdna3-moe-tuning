@@ -1,0 +1,15 @@
+diff --git a/src/kernels/mk_gdn_parity.cpp b/src/kernels/mk_gdn_parity.cpp
+index 45da2610..f80dbb1c 100644
+--- a/src/kernels/mk_gdn_parity.cpp
++++ b/src/kernels/mk_gdn_parity.cpp
+@@ -49,7 +49,9 @@ template <class T> size_t ndiff(const std::vector<T>& a, const std::vector<T>& b
+ int main(int argc, char** argv) {
+     using namespace strata::kernels;
+     const bool selftest = argc > 1 && std::string(argv[1]) == "--selftest";
+-    const int N = 2560, HK = 8, HV = 24, S = 128;   // TP's half geometry (card 0)
++    const int N = 2560, S = 128;
++    const int HK = std::getenv("STRATA_MK_HK") ? std::atoi(std::getenv("STRATA_MK_HK")) : 8;    // [rdna3-moe-tuning] 16/48 = one card's full geometry
++    const int HV = std::getenv("STRATA_MK_HV") ? std::atoi(std::getenv("STRATA_MK_HV")) : 24;   // default: TP's half geometry (card 0)
+     const int C = 2 * HK * S + HV * S, ZV = HV * S;
+     const float eps = 1e-6f;
+     const int T = std::getenv("STRATA_MK_T") ? std::atoi(std::getenv("STRATA_MK_T")) : 4;   // 1..8 tokens
