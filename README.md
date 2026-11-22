@@ -123,14 +123,33 @@ Defaults are the measured best within the card's limits. Override any of them pe
 | `FAST` | 1 | skip low-ranked missed experts: +7–10% generation, answers change slightly ([below](#what-was-tried)); `0` = exact |
 | `CTX` | 131072 | max context; the fork ships 262144 (128K frees ~1% more expert slots) |
 | `WATTS` | 294 | power cap; the ceiling for this card |
-| `SCLK` | 2300 | core clock max (MHz); higher brings coil whine for ~1 tok/s |
-| `MCLK` | 1300 | VRAM clock (MHz) |
+| `SCLK` | 2300 | core clock max (MHz); kept low for coil whine, see [perf mode](#perf-mode-not-default) |
+| `MCLK` | 1300 | VRAM clock (MHz); 1400 is stable and faster, 1500 crashes the box |
 | `VO` | -50 | core voltage offset (mV) |
 | `EPP` / `BOOST` | performance / 1 | the CPU computes the experts not cached in VRAM |
 | `TABLE` | hipBLASLt `100202` | matches ROCm 7.2.x: prompts +8% |
 | `HOST` / `PORT` | 127.0.0.1 / 8080 | `HOST=0.0.0.0` for the LAN |
 | `XENV` / `XARGS` | — | extra engine env / flags, e.g. `XARGS="--spec 3"` |
 | `NAME` / `REPEATS` | default / 3 | bench run name and repeats |
+
+### Perf mode (not default)
+
+How far the card goes with the clocks uncapped, still at the 294 W cap and -50 mV. It runs at the
+power limit with coil whine, so it stays opt-in:
+`SCLK=3000 MCLK=1400 ./strata-rdna3.sh serve`. A plain `./strata-rdna3.sh serve` goes back to daily clocks.
+Clock changes need root; `tools/strata-oc` is a passwordless helper (install steps in its header).
+
+| SCLK / MCLK | 8K tok/s | 32K tok/s | busy clock / power / hotspot |
+|---|---|---|---|
+| 2300 / 1300 (daily) | 111.0 | 109.6 | 2244 MHz, 230 W, 62 °C |
+| 2300 / 1400 | 113.7 | 112.7 | 2247 MHz, 244 W, 67 °C |
+| 2300 / 1450 | 112.9 | 111.6 | 2238 MHz, 248 W, 56 °C |
+| 2300 / 1500 | — | — | box hard-crashed on apply |
+| 2700 / 1400 | 118.7 | 119.9 | 2441 MHz, 284 W, 66 °C |
+| **3000 / 1400** | **121.6** | **122.5** | 2505 MHz, 287 W, 70 °C |
+
+At 3000 the card hits the 294 W cap and holds ~2500 MHz, so higher SCLK settings add little; more speed
+would need more power. Raw output: [`snapshot/2026-11-22/sweep19.txt`](snapshot/2026-11-22/sweep19.txt) (`tools/sweep19.sh`, REPEATS 3).
 
 ## What was tried
 

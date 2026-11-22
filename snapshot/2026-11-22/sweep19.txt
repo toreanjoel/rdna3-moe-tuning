@@ -1,0 +1,25 @@
+== sclk 2300 mclk 1300 rc=0  tuning already applied: sclk 2300 mclk 1300 vo -50 294W epp performance boost 1
+    8192      2855    2436   1.17     111.0  119.0   0.93
+   32768      3554    3541   1.00     109.6  114.1   0.96
+   busy n=48 sclk 2244 mclk 1300  230 W  hotspot 62 C  mem 72 C
+== sclk 2300 mclk 1400 rc=0  applying sclk 2300 mclk 1400 vo -50 294W epp performance boost 1 (was: 2300 1300 -50 294 performance 1)
+    8192      2910    2436   1.19     113.7  119.0   0.96
+   32768      3604    3541   1.02     112.7  114.1   0.99
+   busy n=48 sclk 2247 mclk 1400  244 W  hotspot 67 C  mem 76 C
+== sclk 2300 mclk 1500: box hard-crashed on apply (run1)
+-- trying sclk 2300 mclk 1450 16:36:42 (no result after this line = the box crashed here)
+== sclk 2300 mclk 1450 rc=0  applying sclk 2300 mclk 1450 vo -50 294W epp performance boost 1 (was:    0 balance_performance 1)
+    8192      2920    2436   1.20     112.9  119.0   0.95
+   32768      3611    3541   1.02     111.6  114.1   0.98
+   busy n=46 sclk 2238 mclk 1449  248 W  hotspot 56 C  mem 64 C
+-- trying sclk 2700 mclk 1400 16:37:57 (no result after this line = the box crashed here)
+== sclk 2700 mclk 1400 rc=0  applying sclk 2700 mclk 1400 vo -50 294W epp performance boost 1 (was: 2300 1450 -50 294 performance 1)
+    8192      3066    2436   1.26     118.7  119.0   1.00
+   32768      3762    3541   1.06     119.9  114.1   1.05
+   busy n=44 sclk 2441 mclk 1400  284 W  hotspot 66 C  mem 72 C
+-- trying sclk 3000 mclk 1400 16:39:08 (no result after this line = the box crashed here)
+== sclk 3000 mclk 1400 rc=0  applying sclk 3000 mclk 1400 vo -50 294W epp performance boost 1 (was: 2700 1400 -50 294 performance 1)
+    8192      3067    2436   1.26     121.6  119.0   1.02
+   32768      3746    3541   1.06     122.5  114.1   1.07
+   busy n=46 sclk 2505 mclk 1400  287 W  hotspot 70 C  mem 77 C
+sweep19 done

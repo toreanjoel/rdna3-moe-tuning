@@ -90,3 +90,9 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
   installed on the box 2026-11-22) does the wake + clocks; tune() uses it when present.
 - OD ranges (7900 XTX): SCLK 500-5000, MCLK 97-1500, VDDGFX offset -450..0, power cap max 402 W (we stay <=294).
   Perf-mode test = tools/sweep19.sh (not a default).
+- sweep19 (2026-11-22, 294 W, VO -50, REP 3), 8K/32K tok/s: 2300/1300 111.0/109.6; 2300/1400 113.7/112.7;
+  2300/1450 112.9/111.6; 2300/1500 HARD CRASH on apply; 2700/1400 118.7/119.9; 3000/1400 121.6/122.5
+  (power-limited at ~287 W, ~2505 MHz busy). Perf mode = SCLK=3000 MCLK=1400, opt-in only (user: whine, not default).
+  Daily MCLK could move to 1400 (+2.7 tok/s, stable here) but the user hasn't decided; defaults unchanged.
+- Strata 0.2.19 (upstream Niko1221/Strata, 2026-11-22) is NOT what we run: we pin nicejunjie/Strata-rdna3 6c2cd28b.
+  Its "Qwen speed improvements" are untested here.
