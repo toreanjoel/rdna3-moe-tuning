@@ -194,3 +194,5 @@ power, and 47 GB of reserved huge pages (transparent huge pages already back ~52
 | `patches/` | engine kernel patches, applied on top of the pinned fork by `./strata-rdna3.sh build`, each behind its own switch |
 | `snapshot/<date>/` | raw measurements behind every number here |
 | [`docs/history-stock-strata.md`](docs/history-stock-strata.md) | the stock-Strata investigation (clocks, power, decode ladder) |
+| [`docs/kernel-work-notes.md`](docs/kernel-work-notes.md) | running kernel-work log: measurements, decisions, what was dropped and why, box quirks |
+| `tools/strata-oc` | optional root helper for clocks/power (install steps in its header; caps power at 294 W) |
