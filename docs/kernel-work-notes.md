@@ -147,6 +147,18 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
   for 1-token passes: the pre-signed one was +1.5 us there), T2 55 -> 48-49, T3 73 -> 61. End to end -0.03 ms/window
   (18.23/18.22 -> 18.19/18.21). 4 rows a warp pass (more loads in flight): no gain, dropped.
 
+## CPU experts, plan, draft switches 2026-11-22 (sweep28-30, tools/membw.c, claude_cpubench, tools/knames.py)
+- Fresh profile (sweep28, stamps inflate small stages): copy+combine 1.76 GDN + 0.59 QSA ms/window (1.5-3.1 run to run) is
+  mostly the GPU spinning in combine_cpu for the CPU experts (~2.0 experts / 2.6 entries a layer-window, 92% VRAM hits,
+  9444 slots, VRAM full: 360 MiB free).
+- CPU side is at the RAM floor: membw (AVX-512, cores 1..N) streams 48-53 GB/s, a cold 4 MB slice takes ~93 us at 12-15
+  threads. claude_cpubench (real rows, 12 workers): 1 expert 60 us (36 GB/s), 2 experts 101 us cold / 77 us L3-warm, 6
+  experts ~50 GB/s. Warm is only 1.1-1.35x -> L3 prefetch of predicted misses is worth <=25% of the CPU path; not built.
+  --pcie-frac (GPU fetches misses over PCIe) was -5% earlier. The CPU wait is structural at this hit rate.
+- STRATA_VERIFY_DEVICE_PLAN=1 (sweep29): +1 ms/window and answers changed here. Dropped.
+- sweep30: STRATA_MTP_QFUSE=1 / MULTICOPY=1 noise (bitwise); STRATA_MTP_HIP_PRIO=1 draft 1.72 -> 2.7-2.9 ms (worse). None kept.
+- Kernel count per layer-window ~25 (knames on kprof-k4); removing one dependent launch is worth ~0.5-1 us here (route fuse).
+
 ## Dense GEMVs at the model's real shapes 2026-11-22 (patches/bench-shapes.patch adds them to claude_bench mmvq; tools/gguf_tensors.py)
 - Per layer: GDN qkv Q6_K 2560->10240, z (attn_gate) Q4_K 2560->6144, ssm_out Q6_K 6144->2560, alpha/beta bf16 2560->48;
   QSA q IQ4_XS 2560->12288, k/v Q6_K 2560->512, output Q4_K 6144->2560; shexp gate/up Q4_K / IQ4_XS 2560->640, down IQ4_NL.
