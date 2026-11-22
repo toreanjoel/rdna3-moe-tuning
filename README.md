@@ -162,6 +162,8 @@ Defaults are the measured best within the card's limits. Override any of them pe
 | `STRATA_EXP_AUTO=1` ([`patches/exp-auto.patch`](patches/exp-auto.patch): IQ2_S gate/up fused, Q2_0 down in LDS) | 109.7 → 110.7, same answers | yes |
 | `STRATA_LFUSE=1`; hc read with the up weights preloaded | none | no |
 | Q2_0 expert down on EXPDEC's staged kernel, 2 rows a lane (in `exp-auto.patch`; `STRATA_EXP_AUTO=5` = the LDS kernel) | kernel −10–23%; 110.6 → 110.8, same answers | yes |
+| IQ4_XS GEMV at 1–2 tokens unrolled 2 ([`patches/kq-unroll.patch`](patches/kq-unroll.patch); `STRATA_RDNA_KQ_UNR=0` = stock) | kernel 56 → 26 µs; 110.6 → 110.8 (8K), 111.0 → 111.35 (32K), same answers | yes |
+| RDNA Q4_K GEMV from 3 tokens, 2 on 6144-wide rows (in `kq-unroll.patch`; `STRATA_RDNA_KQ_MIN=0` = stock) | kernel −15–25% on 2–3 token windows; 110.9 → 111.25 (8K), 111.5 → 112.0 (32K), same answers | yes |
 | `STRATA_EXPDEC=1` gate/up (the RDNA4 default) | IQ3_XXS gate/up +7% slower on gfx1100 | no |
 | `--spec 3` / `5` / `6`, `--spec-min-p 0.7` | 108 / 112 / 114.5 / 112 (8K, 3 runs) | no |
 | `--spec-min-p 0.35`, `--mtp-q4 proj` (full-precision draft head) | bench 8K +6% / +5%, 32K −2% / −0.4%; varied chats ([`tools/chatbench.py`](tools/chatbench.py)) 126.0 → 123.0 / 124.6 | no |
