@@ -1,0 +1,17 @@
+[24/25] Linking HIP static library libstrata_mmq.a
+[25/25] Linking HIP executable strata
+== s16old1  XENV=[STRATA_RDNA_KQ_UNR=0]
+    8192      2848    2436   1.17     110.5  119.0   0.93
+   32768      3558    3541   1.00     111.0  114.1   0.97
+== s16new1  XENV=[]
+    8192      2858    2436   1.17     110.9  119.0   0.93
+   32768      3555    3541   1.00     111.3  114.1   0.98
+== s16old2  XENV=[STRATA_RDNA_KQ_UNR=0]
+    8192      2860    2436   1.17     110.7  119.0   0.93
+   32768      3557    3541   1.00     111.0  114.1   0.97
+== s16new2  XENV=[]
+    8192      2868    2436   1.18     110.7  119.0   0.93
+   32768      3560    3541   1.01     111.4  114.1   0.98
+sweep16 done
+
+[exited with code 0]

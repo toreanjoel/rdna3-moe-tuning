@@ -1,0 +1,51 @@
+diff --git a/src/kernels/cuda/rdna_mmvq.cu b/src/kernels/cuda/rdna_mmvq.cu
+index 991bd0b0..5b81e451 100644
+--- a/src/kernels/cuda/rdna_mmvq.cu
++++ b/src/kernels/cuda/rdna_mmvq.cu
+@@ -195,6 +195,22 @@ template <int FMT>
+ void kq_launch(const uint8_t* wb, const Q81* x, float* y, int n_in, int n_out, int ncols, cudaStream_t s,
+                const uint8_t* w2 = nullptr, float* y2 = nullptr, int n_out2 = 0) {
+     const unsigned blocks = (unsigned) ((n_out + 7) / 8 + (w2 ? (n_out2 + 7) / 8 : 0));
++    // rdna3-moe-tuning STRATA_RDNA_KQ_UNR=1-5|10|12 (Q4_K / Q5_K / IQ4_XS, 1-4 columns): superblocks unrolled per loop pass; the
++    // same per-lane arithmetic and reduction, so bitwise the default.  Default 2 for IQ4_XS: the stock unroll (5 at 1-2 columns,
++    // 3 at 3-4) falls off a cliff at 2 columns on gfx1100 (claude_bench, IQ4_XS 2560->12288: T1-4 24.7 / 56.7 / 29.4 / 33.1 us
++    // -> 23.8 / 25.5 / 28.8 / 33.3 at 2; 4 and 5 hit the same cliff at other widths).  =0: the stock unroll.
++    static const int unr_env = [] { const char* v = std::getenv("STRATA_RDNA_KQ_UNR"); return v ? std::atoi(v) : -1; }();
++    const int unr = unr_env >= 0 ? unr_env : (FMT == 23 ? 2 : 0);
++    if constexpr (FMT != 21) if (unr > 0 && ncols <= 4) {
++#define STRATA_KQU(U) switch (ncols) { \
++            case 1: rdna_kq_kernel<FMT, 1, U><<<blocks, 256, 0, s>>>(wb, x, y, n_in, n_out, w2, y2, n_out2); break; \
++            case 2: rdna_kq_kernel<FMT, 2, U><<<blocks, 256, 0, s>>>(wb, x, y, n_in, n_out, w2, y2, n_out2); break; \
++            case 3: rdna_kq_kernel<FMT, 3, U><<<blocks, 256, 0, s>>>(wb, x, y, n_in, n_out, w2, y2, n_out2); break; \
++            default: rdna_kq_kernel<FMT, 4, U><<<blocks, 256, 0, s>>>(wb, x, y, n_in, n_out, w2, y2, n_out2); break; }
++        if (unr >= 12) STRATA_KQU(12) else if (unr >= 10) STRATA_KQU(10) else if (unr == 5) STRATA_KQU(5) else if (unr == 4) STRATA_KQU(4) else if (unr == 3) STRATA_KQU(3) else if (unr == 2) STRATA_KQU(2) else STRATA_KQU(1)
++#undef STRATA_KQU
++        return;
++    }
+     switch (ncols) {
+         case 1: rdna_kq_kernel<FMT, 1><<<blocks, 256, 0, s>>>(wb, x, y, n_in, n_out, w2, y2, n_out2); break;
+         case 2: rdna_kq_kernel<FMT, 2><<<blocks, 256, 0, s>>>(wb, x, y, n_in, n_out, w2, y2, n_out2); break;
+@@ -208,6 +224,10 @@ void kq_launch(const uint8_t* wb, const Q81* x, float* y, int n_in, int n_out, i
+ }
+ }  // namespace
+ 
++static bool kq_min_on() {
++    static const bool on = [] { const char* v = std::getenv("STRATA_RDNA_KQ_MIN"); return v == nullptr || v[0] != '0'; }();
++    return on;
++}
+ bool rdna_kq_mmvq(int type, const void* w, const void* xq, float* y, int n_in, int n_out, int ncols, void* stream) {
+     return rdna_kq_mmvq2(type, w, xq, y, n_in, n_out, ncols, stream, nullptr, nullptr, 0);
+ }
+@@ -221,7 +241,11 @@ bool rdna_kq_mmvq2(int type, const void* w, const void* xq, float* y, int n_in,
+     cudaStream_t s = (cudaStream_t) stream;
+     switch (type) {
+         // Q4_K / Q5_K: measured slower than the native wave kernels on gfx1100 - not taken (kept for the bench)
+-        case 12: if (ncols < 4 && std::getenv("STRATA_RDNA_KQ_ALL") == nullptr) return false;   // faster than the wave kernel from 4 columns
++        // rdna3-moe-tuning STRATA_RDNA_KQ_MIN (default on, =0 off): Q4_K from 3 columns, and from 2 on the 6144-wide rows
++        // (claude_bench on gfx1100, bitwise the wave kernel: z 2560->6144 T3 28.3 -> 25.4 us, out 6144->2560 T2 24.1 -> 19.4,
++        // T3 27.8 -> 21.1; z at T2 even, T1 the wave kernel wins)
++        case 12: if (ncols < 4 && std::getenv("STRATA_RDNA_KQ_ALL") == nullptr && !(kq_min_on() && (ncols >= 3 || (ncols == 2 && n_in >= 4096))))
++                     return false;
+             kq_launch<12>(wb, x, y, n_in, n_out, ncols, s, w2, y2, n_out2); return true;
+         case 13: if (ncols < 4 && std::getenv("STRATA_RDNA_KQ_ALL") == nullptr) return false;
+             kq_launch<13>(wb, x, y, n_in, n_out, ncols, s, w2, y2, n_out2); return true;

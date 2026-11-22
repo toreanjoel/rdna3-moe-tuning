@@ -1,0 +1,15 @@
+diff --git a/src/kernels/claude_bench.cpp b/src/kernels/claude_bench.cpp
+index baa7a4ed..89ff0b18 100644
+--- a/src/kernels/claude_bench.cpp
++++ b/src/kernels/claude_bench.cpp
+@@ -158,7 +158,9 @@ int main(int argc, char** argv) {
+                             {14, 2560, 12288, "Q6_K q 2560->12288"}, {14, 2560, 512, "Q6_K k 2560->512"}, {8, 2560, 10240, "Q8_0 qkv"},
+                             {14, 2560, 640, "Q6_K shexp 2560->640"}, {20, 640, 2560, "IQ4_NL shexp down 640->2560"},
+                             {14, 2560, 248320, "Q6_K head 2560->248320"},
+-                            {21, 2560, 6144, "IQ3_S gate 2560->6144"}, {21, 6144, 2560, "IQ3_S out 6144->2560"}, {21, 2560, 640, "IQ3_S shexp 2560->640"}};
++                            {21, 2560, 6144, "IQ3_S gate 2560->6144"}, {21, 6144, 2560, "IQ3_S out 6144->2560"}, {21, 2560, 640, "IQ3_S shexp 2560->640"},
++                            // rdna3-moe-tuning: Flash-Next IQ3_S pack shapes (GDN z/attn_gate, QSA q / output)
++                            {12, 2560, 6144, "Q4_K z 2560->6144"}, {12, 6144, 2560, "Q4_K out 6144->2560"}, {23, 2560, 12288, "IQ4_XS q 2560->12288"}, {12, 2560, 640, "Q4_K shexp 2560->640"}, {23, 2560, 640, "IQ4_XS shexp 2560->640"}};
+         void* xq; ck(cudaMalloc(&xq, 8 * 6144 / 32 * 36 + 4096), "xq");
+         float* x = (float*) dalloc_rand(8 * 6144 * 4, 9, false);
+         std::vector<float> hx(8 * 6144); for (auto& v : hx) v = (float) (rand() % 2001 - 1000) / 1000.0f;

@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# sweep17.sh — rdna Q4_K GEMV from 3 columns (2 on 6144-wide rows) (patches/kq-unroll.patch; STRATA_RDNA_KQ_MIN=0 = stock) end to end: interleaved, RE
+cd ~/work/rdna3
+[23/23] Linking HIP executable strata
+== s17old1  XENV=[STRATA_RDNA_KQ_MIN=0]
+    8192      2857    2436   1.17     110.8  119.0   0.93
+   32768      3554    3541   1.00     111.5  114.1   0.98
+== s17new1  XENV=[]
+    8192      2862    2436   1.17     111.1  119.0   0.93
+   32768      3557    3541   1.00     111.9  114.1   0.98
+== s17old2  XENV=[STRATA_RDNA_KQ_MIN=0]
+    8192      2862    2436   1.17     111.0  119.0   0.93
+   32768      3552    3541   1.00     111.5  114.1   0.98
+== s17new2  XENV=[]
+    8192      2860    2436   1.17     111.4  119.0   0.94
+   32768      3552    3541   1.00     112.1  114.1   0.98
+sweep17 done
+
+[exited with code 0]
