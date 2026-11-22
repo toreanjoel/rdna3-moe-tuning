@@ -158,6 +158,9 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
 - STRATA_VERIFY_DEVICE_PLAN=1 (sweep29): +1 ms/window and answers changed here. Dropped.
 - sweep30: STRATA_MTP_QFUSE=1 / MULTICOPY=1 noise (bitwise); STRATA_MTP_HIP_PRIO=1 draft 1.72 -> 2.7-2.9 ms (worse). None kept.
 - Kernel count per layer-window ~25 (knames on kprof-k4); removing one dependent launch is worth ~0.5-1 us here (route fuse).
+- IQ4_NL down with one unaligned 8-byte weight load instead of four 16-bit loads (bitwise): 30.7 / 33.9 us vs 30.8 / 33.4
+  (G 20, T 1 / 2) -> no gain, reverted. Marginal rates from G 10 -> 20: down ~710 GB/s, gate/up ~680 GB/s; each expert
+  kernel carries a ~5-10 us fixed ramp/tail. Body tuning is done; only fewer dependent kernels or more overlap would pay.
 
 ## Dense GEMVs at the model's real shapes 2026-11-22 (patches/bench-shapes.patch adds them to claude_bench mmvq; tools/gguf_tensors.py)
 - Per layer: GDN qkv Q6_K 2560->10240, z (attn_gate) Q4_K 2560->6144, ssm_out Q6_K 6144->2560, alpha/beta bf16 2560->48;
