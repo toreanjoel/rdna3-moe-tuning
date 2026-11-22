@@ -70,6 +70,17 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
   gains do not carry to real chats -> drafting defaults stay (--spec 4 --spec-min-p 0.5 --mtp-q4 all). Drafting is a dead end here;
   the remaining lever is GPU step time (graph nodes ~3 ms/step, attention 7.6 ms, experts 4 ms).
 
+## Roofline and the 200 tok/s question 2026-11-22 (tools/roofline.py, snapshot/2026-11-22/roofline.txt)
+- Bytes a step must read (GGUF types, 2.8-token window, 90% expert hit, int8 HC, 8K): ~6.3 GB -> floor ~7.7 ms at
+  816 GB/s (85% of 960). Profiled now ~23.4 ms incl. draft (bench step ~19-20 ms). 2.1 tokens kept: floor 272 tok/s,
+  floor + 3 ms other cost ~196. So ~200 needs every stage near DRAM roofline AND ~1100 graph nodes' overhead gone.
+- Gap by stage (now - floor ms): GDN/attention 4.8 (303 GB/s), HC 2.6 (187), router+shared 2.5 (97), copy+combine 2.0,
+  draft 1.55, waits 1.1, experts 1.1 (596 GB/s), head 0.06 (at roofline). CPU RAM bandwidth is not the limit (GPU waits ~1%).
+- sweep20: STRATA_MEGAKERNEL=1 is a no-op here: the persistent GDN kernel (megakernel_gdn.cu, bitwise the six nodes) only
+  covers Q8_0 projections; ours are Q6_K qkv / Q4_K z / Q6_K out ("types 14/12/14"). SIDE_MIXER=1 97.5, =2 82.3 vs 109.3 (worse).
+- Plan: (1) megakernel GDN with Q6_K/Q4_K bodies (biggest gap, 36 layers x 6 nodes); (2) HC + router + shared + combine
+  folds; (3) draft head cost; each behind a switch, bitwise check, end-to-end A/B.
+
 ## Dense GEMVs at the model's real shapes 2026-11-22 (patches/bench-shapes.patch adds them to claude_bench mmvq; tools/gguf_tensors.py)
 - Per layer: GDN qkv Q6_K 2560->10240, z (attn_gate) Q4_K 2560->6144, ssm_out Q6_K 6144->2560, alpha/beta bf16 2560->48;
   QSA q IQ4_XS 2560->12288, k/v Q6_K 2560->512, output Q4_K 6144->2560; shexp gate/up Q4_K / IQ4_XS 2560->640, down IQ4_NL.

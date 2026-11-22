@@ -1,0 +1,14 @@
+window 2.8 tokens, ctx 8192, 960 GB/s x 0.85 = 816 GB/s reachable
+stage                       GB/step  floor ms  now ms  gap ms  now GB/s
+gdn/attention layers           2.30      2.82    7.60    4.78       303
+experts (VRAM)                 2.44      2.99    4.10    1.11       596
+hyper-connections              0.64      0.78    3.40    2.62       187
+router + shared expert         0.27      0.33    2.80    2.47        97
+copy + combine                 0.00      0.00    2.00    2.00         0
+output head                    0.52      0.64    0.70    0.06       745
+waits                          0.00      0.00    1.10    1.10         0
+draft (MTP)                    0.13      0.15    1.70    1.55        74
+total                          6.30      7.72   23.40   15.68
+tokens kept/step 2.1: now 90 tok/s; at the floor 272; floor + 3 ms of other cost 196
+tokens kept/step 2.5: now 107 tok/s; at the floor 324; floor + 3 ms of other cost 233
+tokens kept/step 3.0: now 128 tok/s; at the floor 388; floor + 3 ms of other cost 280
