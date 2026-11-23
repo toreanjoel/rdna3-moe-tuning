@@ -231,6 +231,13 @@ Drafting is tuned out on this model: the MTP head keeps ~2.2 tokens a step and 3
 every setting that drafts more costs more verify time than it keeps on real chats. ~180 tok/s would need ~3.4 tokens
 a step at today's step time, or a much shorter step.
 
+In progress: retraining the MTP draft head on this IQ3_S model's own answers, so more drafts get accepted. Answers
+stay exact either way; the estimate is +5–25%, not certain. Pipeline (`tools/mtp_pipeline.sh <prompts> <max tokens>`):
+`patches/mtp-dump.patch` (`STRATA_MTP_DUMP`) writes each prompt position's hidden state and next token,
+`tools/mtp_data.py` generates prompts and greedy answers and replays them through the dump, and `tools/mtp_train.py`
+(a PyTorch copy of the draft layer) trains a LoRA on the first draft step and exports the runtime format. First run:
+1,500 prompts, ~0.8M tokens. The result goes in the table above.
+
 Next: the GPU side of a step ([profile](#where-a-generation-steps-time-goes)), mainly fewer graph nodes (~3 ms of a
 ~20 ms step). Left out on purpose: higher clocks or
 power, and 47 GB of reserved huge pages (transparent huge pages already back ~52 GB of the expert arena).
@@ -246,5 +253,7 @@ power, and 47 GB of reserved huge pages (transparent huge pages already back ~52
 | `snapshot/<date>/` | raw measurements behind every number here |
 | [`docs/history-stock-strata.md`](docs/history-stock-strata.md) | the stock-Strata investigation (clocks, power, decode ladder) |
 | [`docs/kernel-work-notes.md`](docs/kernel-work-notes.md) | running kernel-work log: measurements, decisions, what was dropped and why, box quirks |
+| `tools/plots.py` | draws the charts in `docs/img/` from the measured numbers in the script |
+| `tools/mtp_*.py`, `tools/mtp_pipeline.sh` | MTP draft-head retraining: data, training, export |
 | `tools/sync-box.sh` | copy this repo's script, patches and tools to a remote box (`tools/sync-box.sh user@host`) so its `serve` runs the latest |
 | `tools/strata-oc` | optional root helper for clocks/power (install steps in its header; caps power at 294 W) |
