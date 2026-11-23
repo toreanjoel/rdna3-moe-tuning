@@ -90,6 +90,9 @@ patch_fork() {
   sed -i 's/rdna3_run.config(a.setup, a.data, a.gpus, vision=True)/rdna3_run.config(a.setup, a.data, a.gpus, vision=False)/;
           s|"--log", str(out / "engine.log")\]|"--log", str(out / "engine.log"), "--no-vision"]|;
           s|"max_tokens": n, "temperature": 0,|"max_tokens": n, "temperature": float(os.environ.get("BENCH_TEMP", "0")),|' "$SRC/rdna3/bench.py"
+  # every rdna3/configs/*.json is a setup (adds iq3xxs-1gpu: the ISTA IQ3_XXS pack, tools/sweep31.sh)
+  sed -i 's|^SETUPS = \[f"{q}-{g}gpu" for q in ("iq3", "iq4", "q4") for g in (1, 2)\]$|SETUPS = sorted(p.stem for p in (Path(__file__).resolve().parent / "configs").glob("*.json"))|' "$SRC/rdna3/run.py"
+  grep -q '"iq3xxs":' "$SRC/rdna3/run.py" || sed -i 's|^PACKS = {"iq3": (|PACKS = {"iq3xxs": ("iq3_xxs", "IQ3_XXS/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00001-of-00002.gguf"),\n         "iq3": (|' "$SRC/rdna3/run.py"
   grep -q 'STRATA_X_ENV' "$SRC/rdna3/run.py" && return
   "$SRC/.venv/bin/python" - "$SRC/rdna3/run.py" <<'PY'
 import sys, pathlib
@@ -116,8 +119,8 @@ p.write_text(s.replace(anchor, hook, 1))
 PY
 }
 
-# GPU/CPU tuning from start-strata.sh (measured 2026-11-21): <=280-294 W, no SCLK max (coil whine), VRAM 1300.
-SCLK=${SCLK:-2300}; MCLK=${MCLK:-1300}; VO=${VO:--50}; WATTS=${WATTS:-294}; EPP=${EPP:-performance}; BOOST=${BOOST:-1}
+# GPU/CPU tuning from start-strata.sh (measured 2026-11-21): <=280-294 W, no SCLK max (coil whine), VRAM 1400 (daily since 2026-11-23; 1500 crashes).
+SCLK=${SCLK:-2300}; MCLK=${MCLK:-1400}; VO=${VO:--50}; WATTS=${WATTS:-294}; EPP=${EPP:-performance}; BOOST=${BOOST:-1}
 
 card() { for c in /sys/class/drm/card*/device; do [ "$(cat "$c/device" 2>/dev/null)" = 0x744c ] && { echo "$c"; return; }; done; }
 
@@ -205,7 +208,7 @@ uninstall() {
 case "${1:-}" in
   install) install ;;
   serve) serve ;;
-  perf) SCLK=3000; MCLK=1400; serve ;;   # opt-in perf mode (coil whine, at the 294 W cap): ~122 vs ~111 tok/s; `serve` returns to daily clocks
+  perf) SCLK=3000; MCLK=1400; serve ;;   # opt-in perf mode (coil whine, at the 294 W cap): ~122 vs ~114 tok/s; `serve` returns to daily clocks
   stop) stop_all ;;
   monitor) STRATA_PYTHON="$SRC/.venv/bin/python" exec "$SRC/bin/strata" monitor --url "http://127.0.0.1:$PORT" ;;   # live TUI; q detaches, server keeps running
   speed) tail -n "${N:-10}" -F "$LOG" | grep --line-buffered -oE 'prompt [0-9]+ tokens.*tok/s\)|drafts accepted [0-9]+ of [0-9]+' ;;

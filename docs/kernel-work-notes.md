@@ -185,7 +185,8 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
 - sweep19 (2026-11-22, 294 W, VO -50, REP 3), 8K/32K tok/s: 2300/1300 111.0/109.6; 2300/1400 113.7/112.7;
   2300/1450 112.9/111.6; 2300/1500 HARD CRASH on apply; 2700/1400 118.7/119.9; 3000/1400 121.6/122.5
   (power-limited at ~287 W, ~2505 MHz busy). Perf mode = SCLK=3000 MCLK=1400, opt-in only (user: whine, not default).
-  Daily MCLK could move to 1400 (+2.7 tok/s, stable here) but the user hasn't decided; defaults unchanged.
+  Daily MCLK moved to 1400 on 2026-11-23 (user approved; +2.5%, stable). SCLK 2300 / 294 W unchanged.
+  bench d1400 (2026-11-23, all patches, REP 3): 8K 117.7 / 32K 117.4 decode, prefill 2903 / 3605 (was 113-114 / 114 at MCLK 1300).
 - More power (up to the card's 402 W) would likely give ~126-130 tok/s in perf mode; the user chose to bank 294 W.
   `./strata-rdna3.sh perf` = SCLK 3000 / MCLK 1400. sweep19 takes POINTS="sclk:mclk:watts" if this is revisited
   (strata-oc must then allow >294 and be reinstalled as root).
@@ -196,3 +197,20 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
   moe_p1a FL=3 (prefill). Nothing worth porting for our IQ3_S expert formats. Kept ours.
   Bundle deleted afterwards (~/work/strata removed). To retest a future release: download its hip-rx7900 tarball to
   ~/work/strata/<ver>, then `UP=~/work/strata/<ver> bash tools/upbench.sh` (stops/restarts the server, our engine untouched).
+
+- 2026-11-23 IQ3_XXS (ISTA GSQ-RCO, tools/sweep31.sh, daily tune, REP 3, interleaved S/XXS/S/XXS). Shard 2 is
+  byte-identical to IQ3_S's (hard link, only 47 GB new); pack data/packs/iq3_xxs 42 GB; setup iq3xxs-1gpu.
+  Decode 8K 113.5 vs 114.5, 32K 119.1 vs 114.3; prompt 8K 3043 vs 2866. Expert slots 9444 -> 11252, CPU experts per
+  layer-window 0.99 -> 0.37, host per layer 2.25 -> 0.89 ms, but GPU-reach wait 13.8 -> 14.8 ms (IQ2_XXS/IQ2_XS
+  expert kernels untuned), net ms/window 18.7 -> 18.4. Quality vs IQ3_S: top-1 85.0%, KL 0.184, PPL 4.022 vs 4.041;
+  ISTA task avg 92.57 vs 93.26 (BF16 93.12). Kept IQ3_S as default. With XXS the step is GPU-bound: the +1-4% only
+  grows if the IQ2_XXS/IQ2_XS gate/up kernels get the gu-n treatment.
+
+## Combine-wait MALL prefetch 2026-11-23 (DROPPED; tools/sweep32.sh, snapshot/2026-11-23/sweep32.txt, wait-pf-experiment.py)
+- STRATA_WAIT_PF=<blocks>: extra blocks in combine_cpu_k10_vec4 read layer l+1's HC/mixer/router/shexp weights while the
+  combine waits for the CPU experts, stopping when the flag is up (polled first, then once per chunk). Bitwise (12/12 SAME).
+- ms/window (2 rounds): off 18.73 / 18.71; 96 blocks 18.95 / 18.91; 48 18.78 / 18.77; 96 at 8 uint4 18.92 / 18.93.
+  Slower every time: the combine rarely waits at 92% VRAM hits (the CPU finishes during the VRAM expert kernels), so the
+  blocks only add their launch + one PCIe poll of the mapped flag (~2-4 us a layer). Reverted on the box.
+- Conclusion with the 11-22 MALL work: no idle DRAM window exists inside one launch that isn't on the critical path.
+  What is left is the ~25 dependent kernels a layer: fewer of them only pays where it shortens that chain.

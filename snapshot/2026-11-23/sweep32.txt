@@ -1,0 +1,83 @@
+== s32_0_1  XENV=[]
+    8192      2858    2436   1.17     114.4  119.0   0.96
+   32768      3559    3541   1.01     113.9  114.1   1.00
+avg T 2.76, 2.15 tokens/window, 18.73 ms/window = verify 16.95 (GPU-reach wait 13.79
+avg T 2.76, 2.13 tokens/window, 18.73 ms/window = verify 16.95 (GPU-reach wait 13.90
+== s32_96_1  XENV=[STRATA_WAIT_PF=96]
+    8192      2866    2436   1.18     113.2  119.0   0.95
+   32768      3558    3541   1.00     112.4  114.1   0.99
+avg T 2.76, 2.15 tokens/window, 18.93 ms/window = verify 17.14 (GPU-reach wait 13.96
+avg T 2.76, 2.13 tokens/window, 18.98 ms/window = verify 17.19 (GPU-reach wait 14.13
+== s32_48_1  XENV=[STRATA_WAIT_PF=48]
+    8192      2871    2436   1.18     113.9  119.0   0.96
+   32768      3558    3541   1.00     113.7  114.1   1.00
+avg T 2.76, 2.15 tokens/window, 18.79 ms/window = verify 17.00 (GPU-reach wait 13.81
+avg T 2.76, 2.13 tokens/window, 18.77 ms/window = verify 16.99 (GPU-reach wait 13.93
+== s32_96c8_1  XENV=[STRATA_WAIT_PF=96 STRATA_WAIT_PF_CH=8]
+    8192      2867    2436   1.18     112.9  119.0   0.95
+   32768      3558    3541   1.00     112.8  114.1   0.99
+avg T 2.76, 2.15 tokens/window, 18.92 ms/window = verify 17.13 (GPU-reach wait 13.96
+avg T 2.76, 2.13 tokens/window, 18.91 ms/window = verify 17.14 (GPU-reach wait 14.08
+== s32_0_2  XENV=[]
+    8192      2870    2436   1.18     114.6  119.0   0.96
+   32768      3557    3541   1.00     114.0  114.1   1.00
+avg T 2.76, 2.15 tokens/window, 18.69 ms/window = verify 16.90 (GPU-reach wait 13.73
+avg T 2.76, 2.13 tokens/window, 18.72 ms/window = verify 16.94 (GPU-reach wait 13.83
+== s32_96_2  XENV=[STRATA_WAIT_PF=96]
+    8192      2869    2436   1.18     113.3  119.0   0.95
+   32768      3557    3541   1.00     112.8  114.1   0.99
+avg T 2.76, 2.15 tokens/window, 18.92 ms/window = verify 17.13 (GPU-reach wait 13.94
+avg T 2.76, 2.13 tokens/window, 18.90 ms/window = verify 17.13 (GPU-reach wait 14.06
+== s32_48_2  XENV=[STRATA_WAIT_PF=48]
+    8192      2869    2436   1.18     114.2  119.0   0.96
+   32768      3557    3541   1.00     113.7  114.1   1.00
+avg T 2.76, 2.15 tokens/window, 18.79 ms/window = verify 17.01 (GPU-reach wait 13.84
+avg T 2.76, 2.13 tokens/window, 18.76 ms/window = verify 17.00 (GPU-reach wait 13.95
+== s32_96c8_2  XENV=[STRATA_WAIT_PF=96 STRATA_WAIT_PF_CH=8]
+    8192      2867    2436   1.18     113.3  119.0   0.95
+   32768      3556    3541   1.00     112.7  114.1   0.99
+avg T 2.76, 2.15 tokens/window, 18.94 ms/window = verify 17.14 (GPU-reach wait 13.95
+avg T 2.76, 2.13 tokens/window, 18.92 ms/window = verify 17.14 (GPU-reach wait 14.06
+-- s32_96_1 vs s32_0_1
+      1 SAME bench/s32_96_1/iq3-1gpu/n32768-r0.json
+      1 SAME bench/s32_96_1/iq3-1gpu/n32768-r1.json
+      1 SAME bench/s32_96_1/iq3-1gpu/n32768-r2.json
+      1 SAME bench/s32_96_1/iq3-1gpu/n8192-r0.json
+      1 SAME bench/s32_96_1/iq3-1gpu/n8192-r1.json
+      1 SAME bench/s32_96_1/iq3-1gpu/n8192-r2.json
+-- s32_96_2 vs s32_0_1
+      1 SAME bench/s32_96_2/iq3-1gpu/n32768-r0.json
+      1 SAME bench/s32_96_2/iq3-1gpu/n32768-r1.json
+      1 SAME bench/s32_96_2/iq3-1gpu/n32768-r2.json
+      1 SAME bench/s32_96_2/iq3-1gpu/n8192-r0.json
+      1 SAME bench/s32_96_2/iq3-1gpu/n8192-r1.json
+      1 SAME bench/s32_96_2/iq3-1gpu/n8192-r2.json
+-- s32_48_1 vs s32_0_1
+      1 SAME bench/s32_48_1/iq3-1gpu/n32768-r0.json
+      1 SAME bench/s32_48_1/iq3-1gpu/n32768-r1.json
+      1 SAME bench/s32_48_1/iq3-1gpu/n32768-r2.json
+      1 SAME bench/s32_48_1/iq3-1gpu/n8192-r0.json
+      1 SAME bench/s32_48_1/iq3-1gpu/n8192-r1.json
+      1 SAME bench/s32_48_1/iq3-1gpu/n8192-r2.json
+-- s32_48_2 vs s32_0_1
+      1 SAME bench/s32_48_2/iq3-1gpu/n32768-r0.json
+      1 SAME bench/s32_48_2/iq3-1gpu/n32768-r1.json
+      1 SAME bench/s32_48_2/iq3-1gpu/n32768-r2.json
+      1 SAME bench/s32_48_2/iq3-1gpu/n8192-r0.json
+      1 SAME bench/s32_48_2/iq3-1gpu/n8192-r1.json
+      1 SAME bench/s32_48_2/iq3-1gpu/n8192-r2.json
+-- s32_96c8_1 vs s32_0_1
+      1 SAME bench/s32_96c8_1/iq3-1gpu/n32768-r0.json
+      1 SAME bench/s32_96c8_1/iq3-1gpu/n32768-r1.json
+      1 SAME bench/s32_96c8_1/iq3-1gpu/n32768-r2.json
+      1 SAME bench/s32_96c8_1/iq3-1gpu/n8192-r0.json
+      1 SAME bench/s32_96c8_1/iq3-1gpu/n8192-r1.json
+      1 SAME bench/s32_96c8_1/iq3-1gpu/n8192-r2.json
+-- s32_96c8_2 vs s32_0_1
+      1 SAME bench/s32_96c8_2/iq3-1gpu/n32768-r0.json
+      1 SAME bench/s32_96c8_2/iq3-1gpu/n32768-r1.json
+      1 SAME bench/s32_96c8_2/iq3-1gpu/n32768-r2.json
+      1 SAME bench/s32_96c8_2/iq3-1gpu/n8192-r0.json
+      1 SAME bench/s32_96c8_2/iq3-1gpu/n8192-r1.json
+      1 SAME bench/s32_96c8_2/iq3-1gpu/n8192-r2.json
+sweep32 done

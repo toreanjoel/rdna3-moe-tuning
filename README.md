@@ -1,6 +1,6 @@
 # rdna3-moe-tuning
 
-Run **Qwen3.8-Flash-Next (IQ3_S, 82 GB MoE)** on a **single RX 7900 XTX (24 GB)** at **~111 tok/s**,
+Run **Qwen3.8-Flash-Next (IQ3_S, 82 GB MoE)** on a **single RX 7900 XTX (24 GB)** at **~117 tok/s**,
 within a 294 W power cap. One script installs, tunes, serves and benchmarks
 [Strata-rdna3](https://github.com/nicejunjie/Strata-rdna3), a gfx1100-tuned fork of the Strata engine.
 
@@ -11,8 +11,8 @@ the rest on the CPU in parallel, and drafts 4 tokens ahead with an MTP head.
 
 | | daily (`serve`) | perf mode (`perf`, opt-in) |
 |---|---:|---:|
-| generation, 8K / 32K context | 111.0 / 109.6 tok/s | 121.6 / 122.5 tok/s |
-| clocks | core 2300, VRAM 1300 | core 3000, VRAM 1400 |
+| generation, 8K / 32K context | 117.7 / 117.4 tok/s | 121.6 / 122.5 tok/s |
+| clocks | core 2300, VRAM 1400 | core 3000, VRAM 1400 |
 | power | 294 W cap, ~230 W used | 294 W cap, ~287 W used (coil whine) |
 
 ```bash
@@ -36,7 +36,7 @@ Everything below is detail: hardware, measurements, every setting and everything
 
 | part | what |
 |---|---|
-| GPU | AMD Radeon RX 7900 XTX 24 GB (gfx1100), 294 W cap, core ≤2300 MHz, VRAM 1300 MHz, −50 mV |
+| GPU | AMD Radeon RX 7900 XTX 24 GB (gfx1100), 294 W cap, core ≤2300 MHz, VRAM 1400 MHz, −50 mV |
 | CPU | AMD Ryzen 9 7945HX (16 Zen 4 cores, 2 CCDs, AVX-512) |
 | RAM | 92 GB DDR5-5200, dual channel |
 | OS / stack | Ubuntu 24.04, ROCm 7.2.4 |
@@ -51,7 +51,7 @@ xychart-beta horizontal
     title "Generation speed on this box, 8K context (tok/s)"
     x-axis ["llama.cpp Vulkan", "llama.cpp ROCm", "Strata (stock)", "Strata-rdna3 (fork config)", "this repo, daily (default)", "this repo, perf mode (opt-in)"]
     y-axis "tok/s" 0 --> 130
-    bar [13, 25, 80, 103, 111, 122]
+    bar [13, 25, 80, 103, 118, 122]
 ```
 
 ```mermaid
@@ -64,7 +64,8 @@ xychart-beta horizontal
 
 | | prompt 8K | prompt 32K | generation 8K / 32K |
 |---|---:|---:|---:|
-| **this repo, `FAST=1` + kernel patches (default)** | **2,860** | **3,556** | **111 / 111.5** |
+| **this repo, `FAST=1` + kernel patches, VRAM 1400 (default)** | **2,903** | **3,605** | **117.7 / 117.4** |
+| this repo, `FAST=1` + kernel patches, VRAM 1300 | 2,860 | 3,556 | 113–114 / 114 |
 | this repo, `FAST=1`, before the kernel patches | 2,860 | 3,555 | 109–111 / 109 |
 | this repo, `FAST=0` (exact answers) | 2,840 | 3,553 | 101 / 103 |
 | fork's shipped config | 2,641 | 3,266 | 103–104 |
@@ -151,7 +152,7 @@ Defaults are the measured best within the card's limits. Override any of them pe
 | `CTX` | 131072 | max context; the fork ships 262144 (128K frees ~1% more expert slots) |
 | `WATTS` | 294 | power cap; the ceiling for this card |
 | `SCLK` | 2300 | core clock max (MHz); kept low for coil whine, see [perf mode](#perf-mode-not-default) |
-| `MCLK` | 1300 | VRAM clock (MHz); 1400 is stable and faster, 1500 crashes the box |
+| `MCLK` | 1400 | VRAM clock (MHz); +2.5% over 1300 and stable, 1500 crashes the box |
 | `VO` | -50 | core voltage offset (mV) |
 | `EPP` / `BOOST` | performance / 1 | the CPU computes the experts not cached in VRAM |
 | `TABLE` | hipBLASLt `100202` | matches ROCm 7.2.x: prompts +8% |
@@ -165,11 +166,12 @@ How far the card goes with the clocks uncapped, still at the 294 W cap and -50 m
 power limit with coil whine, so it stays opt-in:
 `./strata-rdna3.sh perf` (same as `SCLK=3000 MCLK=1400 ./strata-rdna3.sh serve`). A plain `./strata-rdna3.sh serve` goes back to daily clocks.
 Clock changes need root; `tools/strata-oc` is a passwordless helper (install steps in its header).
+The table below is sweep19 (2026-11-22, before the latest kernel patches); with them, daily 2300 / 1400 benches 117.7 / 117.4 (2026-11-23).
 
 | SCLK / MCLK | 8K tok/s | 32K tok/s | busy clock / power / hotspot |
 |---|---|---|---|
-| 2300 / 1300 (daily) | 111.0 | 109.6 | 2244 MHz, 230 W, 62 °C |
-| 2300 / 1400 | 113.7 | 112.7 | 2247 MHz, 244 W, 67 °C |
+| 2300 / 1300 (old daily) | 111.0 | 109.6 | 2244 MHz, 230 W, 62 °C |
+| 2300 / 1400 (daily) | 113.7 | 112.7 | 2247 MHz, 244 W, 67 °C |
 | 2300 / 1450 | 112.9 | 111.6 | 2238 MHz, 248 W, 56 °C |
 | 2300 / 1500 | — | — | box hard-crashed on apply |
 | 2700 / 1400 | 118.7 | 119.9 | 2441 MHz, 284 W, 66 °C |
@@ -221,6 +223,9 @@ would need more power. Raw output: [`snapshot/2026-11-22/sweep19.txt`](snapshot/
 | Infinity Cache prefetch of the next layer's weights (graph side branch, or a persistent kernel beside the graph; `tools/mallbench.hip`) | warm reads run 1.2–2.0 TB/s vs ~0.75, but a graph branch costs ~65 µs a layer (−15%) and a concurrent kernel starves the hyper-connection read (−8% to −50%) | no |
 | `--pool-workers 16` (CPU experts, system RAM) | none (12 and 16 equal; 4 = −8%): the CPU side isn't what limits generation | no |
 | DFlash2 drafter (`--draft dflash2`, incoai/Qwen3.8-Flash-Next-DFlash2) | CLI only in this build; 2.5–2.7 vs 2.2 tokens a round but 85–97 vs 100 tok/s (wider windows cost more), 0.9 GB VRAM | no |
+| Next layer's weights pre-read into the Infinity Cache while the combine waits for CPU experts (`STRATA_WAIT_PF`, `tools/sweep32.sh`) | +0.05–0.22 ms a step (18.72 → 18.77–18.94), same answers: the combine rarely waits at 92% VRAM hits, so the extra blocks only add cost | no |
+| IQ3_XXS model (ISTA GSQ-RCO, 75.8 GB, `tools/sweep31.sh`; 2026-11-23) | 9,444 → 11,252 experts in VRAM, CPU experts 0.99 → 0.37 a layer, but untuned IQ2_XXS/IQ2_XS kernels add ~1 ms of GPU time: 114.5 → 113.5 (8K), 114.3 → 119.1 (32K), prompts +6%; vs IQ3_S top-1 85.0%, KL 0.184 (3.7× `FAST`'s drift); ISTA task average 92.57 vs 93.26 (BF16 93.12) | no (deleted) |
+| Inkling-2-Mini (Thinking Machines, 26B, fits in 24 GB) | not run: scores below this model (DeepSWE 48.2 vs 58.7, SWE-bench Multilingual 73.7 vs 81.0), and this fork doesn't support its looped architecture; its 199 tok/s is on an RTX 5090, ~2× this card's bandwidth | no |
 
 The kernel changes are bit-identical to the engine's own kernels (checked on dumps and on the expert
 bench's real rows), except the wider RDNA Q4_K GEMV and the mixed-format pair, which sum in a different order:
