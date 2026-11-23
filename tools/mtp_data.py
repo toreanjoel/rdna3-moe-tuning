@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # mtp_data.py — MTP head training data: varied prompts, the model's own greedy answers, then a replay through a server started with STRATA_MTP_DUMP (final residual rows + tokens)
 # usage: mtp_data.py prompts OUT.jsonl [N]          deterministic varied prompts (code-heavy, prose, Q&A, lists)
+#        mtp_data.py selfinstruct OUT.jsonl [N] [port]    prompts written by the model itself across ~40 domains (resumable)
 #        mtp_data.py gen PROMPTS.jsonl OUT.jsonl [max_tokens] [port]   greedy answers (resumable: skips done ids)
 #        mtp_data.py replay GEN.jsonl [port] [start] [end]             [user, assistant(reasoning+content)] -> 1 token, so the
 #                                                     prompt path dumps every row (start the server with STRATA_MTP_DUMP=<file>
@@ -64,6 +65,46 @@ def prompts(out, n):
         for r in rows: f.write(json.dumps(r) + "\n")
     print(f"{len(rows)} prompts -> {out}")
 
+DOMAINS = ["Python programming", "JavaScript and web frontends", "backend services and APIs", "databases and SQL",
+           "DevOps, Linux and shell", "systems programming in C, C++ or Rust", "data science and statistics",
+           "machine learning engineering", "mathematics homework", "physics and engineering", "biology and medicine",
+           "history", "philosophy and ethics", "law and contracts (general information)", "personal finance",
+           "business strategy and marketing", "writing and editing help", "creative fiction and poetry",
+           "emails and workplace communication", "travel planning", "cooking and recipes", "fitness and health habits",
+           "parenting and relationships", "language learning and translation", "product and UX design",
+           "career advice and interviews", "debugging an error message", "explaining a concept simply",
+           "comparing tools or technologies", "trivia and general knowledge", "games and puzzles", "music and film",
+           "home repair and DIY", "science for kids", "security and privacy", "spreadsheets and Excel formulas",
+           "mobile app development", "Chinese-language questions (write the requests in Chinese)",
+           "agentic coding tasks with a file or stack trace pasted in", "long multi-part technical questions"]
+
+def selfinstruct(out, n, port=8080, per_call=8):
+    """Diverse prompts written by the model itself (sampled at T=1), deduplicated: closer to real chats than templates."""
+    rnd = random.Random(4321)
+    seen, rows = set(), []
+    try:
+        for l in open(out): r = json.loads(l); seen.add(r["prompt"]); rows.append(r)
+    except FileNotFoundError: pass
+    with open(out, "a") as f:
+        while len(rows) < n:
+            d = rnd.choice(DOMAINS); style = rnd.choice(["short and casual", "detailed with context", "a mix of lengths",
+                                                         "phrased as a beginner", "phrased as an expert"])
+            ask = (f"Write {per_call} different requests a real user might send to an AI assistant about {d}. Make them {style}, "
+                   "varied in task and wording, each self-contained (include any code or data the request refers to). "
+                   "Output only the requests, one per line, no numbering.")
+            try:
+                j = post(port, {"messages": [{"role": "user", "content": ask}], "max_tokens": 1200, "temperature": 1.0,
+                                "top_p": 0.95, "seed": rnd.randrange(1 << 30)})
+            except Exception as e:
+                print("request failed:", e, flush=True); time.sleep(5); continue
+            for line in (j["choices"][0]["message"].get("content") or "").splitlines():
+                p = line.strip().lstrip("-*0123456789. )").strip().strip('"')
+                if len(p) < 15 or p in seen: continue
+                seen.add(p); r = {"id": len(rows), "prompt": p, "domain": d}; rows.append(r)
+                f.write(json.dumps(r, ensure_ascii=False) + "\n"); f.flush()
+            print(f"{len(rows)} prompts", flush=True)
+    print(f"{len(rows)} prompts -> {out}")
+
 def post(port, body, timeout=1800):
     req = urllib.request.Request(f"http://127.0.0.1:{port}/v1/chat/completions", json.dumps(body).encode(),
                                  {"Content-Type": "application/json"})
@@ -99,5 +140,6 @@ def replay(src, port=8080, start=0, end=1 << 30):
 if __name__ == "__main__":
     a = sys.argv[1:]
     if a[0] == "prompts": prompts(a[1], int(a[2]) if len(a) > 2 else 3000)
+    elif a[0] == "selfinstruct": selfinstruct(a[1], int(a[2]) if len(a) > 2 else 3000, *(int(x) for x in a[3:4]))
     elif a[0] == "gen": gen(a[1], a[2], *(int(x) for x in a[3:5]))
     elif a[0] == "replay": replay(a[1], *(int(x) for x in a[2:5]))

@@ -146,7 +146,11 @@ class Mtp(torch.nn.Module):
 
 
 # ---------------------------------------------------------------- data (generate.cpp STRATA_MTP_DUMP records)
-def read_dump(path):
+def read_dump(spec):
+    """comma-separated dumps -> sequences tagged with their file (toks, chunks, path); eval = the last file's tail."""
+    return [(t, c, p) for p in spec.split(",") for t, c in read_dump_one(p)]
+
+def read_dump_one(path):
     """-> list of (tokens int64 array, [(p0, T, offset of the bf16 rows)]) per sequence (a record with p0 == 0 starts one)."""
     seqs, cur = [], None
     with open(path, "rb") as f:
@@ -177,8 +181,8 @@ def seq_rows(path, chunks):
     return torch.from_numpy((u.astype(np.uint32) << 16).view(np.float32))
 
 def batch(path, seq, dev=DEV, max_len=2048):
-    toks, chunks = seq
-    R = seq_rows(path, chunks)
+    toks, chunks = seq[0], seq[1]
+    R = seq_rows(seq[2] if len(seq) > 2 else path, chunks)
     n = min(R.shape[0], len(toks) - 2, max_len)   # cell i: R_i, token i+1, label i+2
     return R[:n].to(dev), torch.from_numpy(toks[1:n + 1]).to(dev), torch.from_numpy(toks[2:n + 2]).to(dev), torch.arange(n, device=dev)
 
@@ -266,11 +270,15 @@ def cmd_train(a):
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 sample, Rout, (k, v) = m(R, tn, pos)
                 loss = F.cross_entropy(((sample @ m.head.T).float() + (mask if mask is not None else 0)), tgt(lab))
-                if a.chain > 1:   # step 2 on the accepted path
-                    n = len(lab) - 1
-                    s2, _, _ = m(Rout[:n], lab[:n], pos[:n] + 1, kv=(k.detach(), v.detach(), pos))
-                    loss = loss + a.chain_w * F.cross_entropy(((s2 @ m.head.T).float() + (mask if mask is not None else 0)),
-                                                              tgt(torch.from_numpy(tr[i][0][3:3 + n]).to(DEV)[:n]))
+                # steps 2..chain on the accepted path, each fed the previous step's own residual (FastMTP), weight chain_w^(j)
+                Rp, n, toks = Rout, len(lab), tr[i][0]
+                for j in range(1, a.chain):
+                    if n - j <= 0: break
+                    tn_j = torch.from_numpy(toks[j + 1: j + 1 + n - j]).to(DEV)
+                    lab_j = torch.from_numpy(toks[j + 2: j + 2 + n - j]).to(DEV)
+                    sj, Rp, _ = m(Rp[: n - j], tn_j[: len(lab_j)], pos[: n - j][: len(lab_j)] + j, kv=(k.detach(), v.detach(), pos))
+                    loss = loss + a.chain_w ** j * F.cross_entropy(((sj @ m.head.T).float() + (mask if mask is not None else 0)),
+                                                                   tgt(lab_j))
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(params, 1.0)
