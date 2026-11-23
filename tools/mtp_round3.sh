@@ -25,13 +25,15 @@ dump $M/files
 date
 [ -s $M/train/out_hc.pt ] || $TP tools/mtp_train.py prep --gguf $(ls data/models/IQ3_S/*00001-of-*.gguf) --out $M/train 2>&1 | tail -3
 # round 1's dump stays unlabelled: all of it is this model's greedy text, whose own tokens are what the decode path chose
-$TP tools/mtp_train.py label --dump $M/train-sess/dump.bin,$M/win-train/dump.bin,$M/files/dump.bin,$M/train2/dump.bin,$M/win-test/dump.bin,$M/test-sess/dump.bin 2>&1 | grep -v Warning
+have() { local o=""; for d in "$@"; do [ -s $M/$d/dump.bin ] && o="$o,$M/$d/dump.bin"; done; echo "${o#,}"; }   # the dumps that exist
+$TP tools/mtp_train.py label --dump $(have train-sess win-train files train2 win-test test-sess) 2>&1 | grep -v Warning
 date
 mkdir -p $M/$TAG
-$TP tools/mtp_train.py train --dump $M/train/dump.bin,$M/train-sess/dump.bin,$M/win-train/dump.bin,$M/files/dump.bin,$M/train2/dump.bin --out $M/$TAG/ckpt.pt \
+$TP tools/mtp_train.py train --dump $(have train train-sess win-train files train2) --out $M/$TAG/ckpt.pt \
   --steps $STEPS --chain ${CHAIN:-4} --chain-w ${CHAINW:-0.6} --vocab $VOCAB --qat --n-eval 60 --eval-every 2000 2>&1 | grep -v "Warning\|scaled_dot" | grep "eval\|base\|train /\|qat\|draws"
 date
 for d in $M/check/replay.bin $M/win-test/dump.bin $M/test-sess/dump.bin; do
+  [ -s $d ] || continue
   for ck in "" ft ft2 ft3 $TAG; do
     [ -z "$ck" ] || [ -s $M/$ck/ckpt.pt ] || continue
     echo "held out $d [${ck:-shipped}]: $($TP tools/mtp_train.py eval --dump $d --n-eval 100000 --qat --vocab $VOCAB ${ck:+--ckpt $M/$ck/ckpt.pt} 2>&1 | grep 'eval on')"
