@@ -237,3 +237,10 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
   by the fused kernel at 3 tokens. Dropped.
 - Budget: an empty node is ~2.8 us (sweep7), so 1 ms needs ~350 launches gone (half the graph) with no slower kernels;
   the persistent GDN megakernel (sweep20) already showed ~0. Fusion rewrites are now expected at +0-3%, not 130 tok/s.
+
+## Tree-draft ceiling 2026-11-23 (patches/mtp-top2.patch, STRATA_MTP_TOP2=1; bench s36d, 8K+32K, REP 2)
+- STRATA_MTP_TOP2 never counted: MtpDrafter::record_top2 had no caller and serve takes the all-steps-at-once path.
+  mtp-top2.patch calls it after each step and routes TOP2 runs stepwise (diagnostic only; off = untouched path).
+- 482 windows: rejected / runner-up right by depth 91/33 (36%), 64/26 (41%), 36/12 (33%) -> a sibling at every depth
+  would keep ~0.15 more tokens a window (2.11 -> ~2.26, +7% at best) for up to 3 extra verify rows a window (spec 5/6
+  showed wider windows cost about what they keep). Tree drafting: not worth building. Retraining the head is the lever left.

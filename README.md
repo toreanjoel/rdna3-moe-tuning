@@ -203,6 +203,7 @@ would need more power. Raw output: [`snapshot/2026-11-22/sweep19.txt`](snapshot/
 | `STRATA_GDN_SPLIT=1` alone (GDN step on 4 blocks a head + a norm kernel; 2026-11-23) | 114.4 → 112.9, same answers: more blocks don't speed the recurrence, the extra launch costs ~0.25 ms | no |
 | `MMVF_ROWS` / `TSUM` / `ATTN_LANECELL` / `Q6_PACKED`, each alone (2026-11-23, `snapshot/2026-11-23/sweep34.txt`) | 114.3 → 113.2 / 114.3 / 114.2 / 115.1; Q6_PACKED's ms/window is unchanged and its answers differ (acceptance luck, not speed) | no |
 | `STRATA_EXP_AUTO=2` (IQ3_XXS gate/up + SwiGLU + q8_1 in one launch; 2026-11-23) | 114.4 → 114.0, same answers: the launch saved is lost in the slower fused kernel | no |
+| Tree drafting (also verify the MTP head's runner-up; measured with [`patches/mtp-top2.patch`](patches/mtp-top2.patch), 2026-11-23) | runner-up right on 33–41% of rejected drafts: ~+0.15 tokens a window (+7% at best) for up to 3 more verify rows | no |
 | `STRATA_HC_REQ8=1` | 114 / 107, prompts −5% | no |
 | `STRATA_COPY_HIP_PRIO=1`, `--host-core sibling` | −3% / none | no |
 | higher core clock (no SCLK cap) | ~+1 tok/s, coil whine | no |

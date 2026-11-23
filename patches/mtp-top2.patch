@@ -1,0 +1,29 @@
+diff --git a/src/core/mtp.cpp b/src/core/mtp.cpp
+index a5773725..cf7fa847 100644
+--- a/src/core/mtp.cpp
++++ b/src/core/mtp.cpp
+@@ -1803,7 +1803,7 @@ bool MtpDrafter::draft(int T, const int32_t* tokens, int64_t p, int a, int32_t*
+     // caller to the probabilities (the same drafts are used): one launch and one wait instead of a launch + a wait per
+     // step, each a host round trip (~0.3 ms) - the extra drafts cost GPU time the window overlaps nothing with
+     static const bool draft_all = [] { const char* v = std::getenv("STRATA_MTP_DRAFT_ALL"); return v != nullptr && v[0] == '1'; }();
+-    if ((min_p <= 0.0f || draft_all) && !chain_rule_ && max_steps > 0) {
++    if ((min_p <= 0.0f || draft_all) && !chain_rule_ && max_steps > 0 && !top2_env()) {
+         if (draft_all) {   // one graph: the round and every step
+             if (!capture_all(T, max_steps, cp, err)) return false;
+             if (cudaGraphLaunch(all_exec_[cp ? 1 : 0][T][max_steps], cs_) != cudaSuccess) {
+@@ -1874,6 +1874,7 @@ bool MtpDrafter::draft(int T, const int32_t* tokens, int64_t p, int a, int32_t*
+         tl = Clock::now();
+         wait_step(0);
+         if (dt) g_dt.wait0_ms += hms(tl);
++        if (top2_env()) { cudaStreamSynchronize(cs_); record_top2(0); }   // rdna3-moe-tuning: wire the diagnostic
+         drafts[0] = ((volatile int32_t*) h_out_)[0];
+         float pj = ((volatile float*) h_prob_)[0];
+         if (probs) probs[0] = pj;
+@@ -1892,6 +1893,7 @@ bool MtpDrafter::draft(int T, const int32_t* tokens, int64_t p, int a, int32_t*
+             tl = Clock::now();
+             wait_step(j);
+             if (dt) g_dt.waitj_ms += hms(tl);
++            if (top2_env()) { cudaStreamSynchronize(cs_); record_top2(j); }
+             drafts[j] = ((volatile int32_t*) h_out_)[j];
+             pj = ((volatile float*) h_prob_)[j];
+             if (probs) probs[j] = pj;
