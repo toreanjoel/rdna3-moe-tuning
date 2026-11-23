@@ -4,5 +4,7 @@
 cd ~/work/rdna3
 OUT=logs/wide-ab.txt; R="STRATA_SPEC_CUMX_ROW_MS=${ROWMS:-1.1,2.0,2.9,3.6}"
 : > $OUT
-ARMS="s4||;s6|$R|--spec 6;s8|$R|--spec 8" ROUNDS=${ROUNDS:-3} TRACE=1 OUT=$OUT bash tools/ab.sh
+# s8x: the rule at 0.3x its threshold, so deep rows get verified even when it would cut them: slower, but its trace
+# (logs/trace-s8x_*.txt) says what every stricter rule would have kept, without another run
+ARMS="s4||;s6|$R|--spec 6;s8|$R|--spec 8;s8x|$R STRATA_SPEC_CUMX_SCALE=0.3|--spec 8" ROUNDS=${ROUNDS:-3} TRACE=1 OUT=$OUT bash tools/ab.sh
 echo "wide_ab done" >> $OUT

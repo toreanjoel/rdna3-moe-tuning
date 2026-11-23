@@ -268,7 +268,8 @@ power, and 47 GB of reserved huge pages (transparent huge pages already back ~52
 | [`docs/history-stock-strata.md`](docs/history-stock-strata.md) | the stock-Strata investigation (clocks, power, decode ladder) |
 | [`docs/kernel-work-notes.md`](docs/kernel-work-notes.md) | running kernel-work log: measurements, decisions, what was dropped and why, box quirks |
 | `tools/plots.py` | draws the charts in `docs/img/` from the measured numbers in the script |
-| `tools/mtp_*.py`, `tools/mtp_pipeline.sh`, `tools/mtp_round2.sh` | MTP draft-head retraining: data, training (`--qat`), export; `mtp_check.py` compares the torch head with what the server drafts |
+| `tools/mtp_*.py`, `tools/mtp_pipeline.sh`, `tools/mtp_round2.sh`, `mtp_round3.sh`, `mtp_deep.sh` | MTP draft-head retraining: data, training (`--qat`, `--chain`), export; `label` marks any replayed text with the main model's own next token (round 3); `mtp_files.py` builds replay rows from source files; `mtp_check.py` compares the torch head with what the server drafts; `mtp_smoke.sh` tests the trainer on CPU |
+| `tools/wide_ab.sh`, `tools/lookup_ab.sh`, `tools/specsim.py` | windows past 4 rows under the cumulative rule, prompt lookup chained after the drafts, and an offline replay of a draft trace under other window rules |
 | `tools/ab.sh`, `tools/spectrace.py`, `tools/hitrate.py`, `tools/qcheck.sh` | A/B arms on the chat prompts or session replays, per-position draft statistics, VRAM expert hit rate, teacher-forced quality check of a switch |
 | `tools/sessions.py`, `tools/sessbench.py`, `tools/profile_ab.sh` | replay requests built from logged coding sessions (kept out of git), their benchmark, the expert-profile test |
 | `tools/sync-box.sh` | copy this repo's script, patches and tools to a remote box (`tools/sync-box.sh user@host`) so its `serve` runs the latest |

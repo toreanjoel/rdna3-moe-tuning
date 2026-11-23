@@ -362,3 +362,20 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
   says the row pays (tools/wide_ab.sh: --spec 6 / 8 with CUMX, row ms 1.1,2.0,2.9,3.6) and the head must hold up at draft
   steps 4+ (tools/mtp_deep.sh: chain 4, scored to step 6). Rows are not free: 1 / 2 / 3 / 4 rows = 14.95 / 16.04 / 18.04 /
   20.93 ms, so the measure is tokens per ms; 0.2 tok/ms at 8 rows (~35 ms) would need ~7 of 8 kept.
+- Draft accuracy by depth, held-out chats (mtp_train.py eval, MTP_EVAL_STEPS=6, --qat, the 65k vocab, accepted path, 12 chats):
+  shipped head 73.7 / 66.4 / 62.4 / 58.9 / 57.2 / 56.0%, round-1 head 79.4 / 73.1 / 66.1 / 63.0 / 60.1 / 58.3% for steps 1-6.
+  Four drafts in a row all right: ~24% of steps. 4.1 kept a step needs ~85% at every depth to step 5, so wide windows can
+  only add where the chain is confident (served drafts with p > 0.9 are accepted 96%); the rest has to come from the head.
+- Round 3 = teacher labels (mtp_train.py label; tools/mtp_round3.sh, queued behind round 2 through tools/mtp_deep.sh): the
+  backbone's own next token at any dumped row is argmax(output.weight @ gr_read(R; output_hc_norm / down / up)) (layer.cpp
+  lm_head), computed in torch from the same dump. So text the model did not write trains the head too: cell (R_t, token
+  t+1) -> the backbone's choice after t+1; draft step j counts where the text followed the backbone's choices up to it.
+  Check on the model's own answers (prompt-path rows, decode-path text): the label is the text's next token at 92.4% of rows
+  (93.8% over the last 128 of a sequence; the rest is FAST's tail skip, which the prompt path does not have; GGUF norm weight
+  as stored, +1 gives 90.7%). Data: every session of this project as consecutive 40K-char windows (sessions.py --windows:
+  116 train / 35 test, 5.5M chars), ~7M chars of source files on the box (tools/mtp_files.py), rounds 1-2. Prompt-path replay
+  is ~1,800 tok/s against ~135 generated. Round 1's dump stays unlabelled (greedy text = what the decode path chose).
+  tools/mtp_smoke.sh = CPU smoke test of the trainer beside a running server (eval unchanged: 79.4 / 73.1 / 66.1).
+- tools/specsim.py replays a draft trace under other window rules. Today's trace (q4_1, --spec 4): as run 2.834 tokens,
+  20.60 ms, 137.6 tok/s; an oracle that verifies only the drafts that hold 147.3 (so a better rule alone is worth <= 7%);
+  every draft right at 4 rows would be 181. wide_ab.sh arm s8x (rule at 0.3x) records a trace deep enough to tune from.

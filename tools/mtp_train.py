@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # mtp_train.py — distil the MTP draft layer to this IQ3_S backbone: torch reference of the engine's draft layer (src/core/mtp.cpp), trained on STRATA_MTP_DUMP rows, exported as a new rt dir
 # usage (train-venv; --qat = with the server's Q4_0 quantization): mtp_train.py prep   --gguf MAIN.gguf --out W          embed + head dequantized once (W/embed.pt, W/head.pt)
+#                     mtp_train.py label  --dump F[,F2] --w W [--dry --n-eval N]   F.lab.npy: the backbone's own next token at every row (then any replayed text trains the head)
 #                     mtp_train.py eval   --dump F --w W [--ckpt C]          step-1 top-1 agreement with the backbone's text
 #                     mtp_train.py train  --dump F --w W --out C [--steps N --lr X]
 #                     mtp_train.py export --ckpt C --rt RT_IN --out RT_OUT   dense.bin re-encoded (experts, draft vocab copied)
@@ -165,8 +166,19 @@ class Mtp(torch.nn.Module):
 
 # ---------------------------------------------------------------- data (generate.cpp STRATA_MTP_DUMP records)
 def read_dump(spec):
-    """comma-separated dumps -> sequences tagged with their file (toks, chunks, path); eval = the last file's tail."""
-    return [(t, c, p) for p in spec.split(",") for t, c in read_dump_one(p)]
+    """comma-separated dumps -> sequences tagged with their file (toks, chunks, path, A); eval = the last file's tail.
+    A = the backbone's own next token at every row (FILE.lab.npy, written by `label`), None when the dump has none: then the
+    text's next token is the label, which is only right for text this model wrote."""
+    out = []
+    for p in spec.split(","):
+        lab = np.load(p + ".lab.npy") if os.path.exists(p + ".lab.npy") and os.environ.get("MTP_NOLAB") != "1" else None
+        o = 0
+        for t, c in read_dump_one(p):
+            n = sum(x[1] for x in c)
+            out.append((t, c, p, None if lab is None else lab[o:o + n].astype(np.int64)))
+            o += n
+        assert lab is None or o == len(lab), f"{p}.lab.npy does not match the dump (run label again)"
+    return out
 
 def read_dump_one(path):
     """-> list of (tokens int64 array, [(p0, T, offset of the bf16 rows)]) per sequence (a record with p0 == 0 starts one)."""
@@ -192,21 +204,41 @@ def read_dump_one(path):
             off = roff + T * HC * H * 2
     return [s for s in seqs if s[1]]
 
-def seq_rows(path, chunks):
+def seq_rows(path, chunks, s=0, e=None):
+    """rows s..e of a sequence (all of it by default), read from the chunks that hold them"""
     mm = np.memmap(path, dtype=np.uint16, mode="r")
-    parts = [np.asarray(mm[o // 2: o // 2 + T * HC * H]).reshape(T, HC * H) for _, T, o in chunks]
+    parts, c0 = [], 0
+    for _, T, o in chunks:
+        a, b = max(s, c0), min(c0 + T if e is None else e, c0 + T)
+        if a < b: parts.append(np.asarray(mm[o // 2 + (a - c0) * HC * H: o // 2 + (b - c0) * HC * H]).reshape(b - a, HC * H))
+        c0 += T
     u = np.concatenate(parts)
     return torch.from_numpy((u.astype(np.uint32) << 16).view(np.float32))
 
-def batch(path, seq, dev=DEV, max_len=2048):
+def batch(path, seq, dev=DEV, max_len=2048, rng=None):
     toks, chunks = seq[0], seq[1]
-    R = seq_rows(seq[2] if len(seq) > 2 else path, chunks)
-    n = min(R.shape[0], len(toks) - 2)   # cell i: R_i, token i+1, label i+2
-    s = max(0, n - max_len)              # a long sequence (a session replay): its last max_len cells, where the answer is
+    A = seq[3] if len(seq) > 3 else None
     src = str(seq[2] if len(seq) > 2 else path)
-    lo = max(0, n - s - TAIL) if "-sess" in src else 0   # a session replay (data/mtp/*-sess): only the answer's cells count, the session's own text is not this model's
-    return (R[s:n].to(dev), torch.from_numpy(toks[s + 1:n + 1]).to(dev), torch.from_numpy(toks[s + 2:n + 2]).to(dev),
+    Rn = sum(c[1] for c in chunks)
+    n = min(Rn if A is None else Rn - 1, len(toks) - 2)   # cell i: R_i, token i+1, label = token i+2 (A: the backbone's choice after token i+1)
+    s = max(0, n - max_len)              # a long sequence (a session replay): its last max_len cells, where the answer is
+    if A is not None and rng is not None and n > max_len:   # labelled: every cell counts, so training takes a random window
+        s = int(rng.integers(0, n - max_len + 1)); n = s + max_len
+    lo = max(0, n - s - TAIL) if "-sess" in src and A is None else 0   # an unlabelled session replay (data/mtp/*-sess): only the answer's cells count, the session's own text is not this model's
+    lab = toks[s + 2:n + 2] if A is None else A[s + 1:n + 1]
+    return (seq_rows(src, chunks, s, n).to(dev), torch.from_numpy(toks[s + 1:n + 1]).to(dev), torch.from_numpy(lab).to(dev),
             torch.arange(s, n, device=dev), lo)
+
+def chain_io(seq, pos0, n, j):
+    """draft step j+1 (j >= 1) of the n-j cells from pos0: the token fed, the label, and (labelled dumps) which cells are on
+    the accepted path, i.e. the text after the cell is what the backbone itself chose up to that step."""
+    toks, m = seq[0][pos0:], n - j
+    A = seq[3][pos0:] if len(seq) > 3 and seq[3] is not None else None
+    tn = torch.from_numpy(toks[j + 1: j + 1 + m]).to(DEV)
+    if A is None: return tn, torch.from_numpy(toks[j + 2: j + 2 + m]).to(DEV), None
+    ok = np.ones(m, dtype=bool)
+    for q in range(1, j + 1): ok &= toks[q + 1: q + 1 + m] == A[q: q + m]
+    return tn, torch.from_numpy(A[j + 1: j + 1 + m]).to(DEV), torch.from_numpy(ok).to(DEV)
 
 
 # ---------------------------------------------------------------- commands
@@ -214,14 +246,51 @@ def prep(a):
     sys.path.insert(0, str(Path.home() / "work/rdna3/engine/third_party/llama.cpp/gguf-py"))
     import gguf
     from gguf.quants import dequantize
-    out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
+    out = Path(a.out); out.mkdir(parents=True, exist_ok=True); hc = {}
     for f in sorted(Path(a.gguf).parent.glob(Path(a.gguf).name.split("-00001")[0] + "*.gguf")):
         r = gguf.GGUFReader(str(f))
         for t in r.tensors:
             if t.name in ("token_embd.weight", "output.weight"):
+                dst = out / ("embed.pt" if t.name.startswith("token") else "head.pt")
+                if dst.exists(): continue
                 x = dequantize(t.data, t.tensor_type).reshape(-1, H)
-                torch.save(torch.from_numpy(x).to(torch.bfloat16), out / ("embed.pt" if t.name.startswith("token") else "head.pt"))
+                torch.save(torch.from_numpy(x).to(torch.bfloat16), dst)
                 print(t.name, t.tensor_type.name, x.shape, flush=True)
+            elif t.name.startswith("output_hc_"):   # the backbone's read of the four streams before its head (layer.cpp lm_head_mix)
+                hc[t.name.split("output_hc_")[1].split(".")[0]] = torch.from_numpy(np.array(dequantize(t.data, t.tensor_type), dtype=np.float32).reshape(-1))
+                print(t.name, t.tensor_type.name, list(t.shape), flush=True)
+    if hc: torch.save(hc, out / "out_hc.pt")
+
+def cmd_label(a):
+    """FILE.lab.npy for each dump in --dump: the backbone's own next token at every row, argmax(output.weight @ mix(R)) with
+    mix = gr_read over output_hc_norm / down / up (layer.cpp lm_head). With it any text is training data: the label is what
+    the model would write there, not what the text says. Prints how often the two agree. --dry: the last --n-eval sequences, no file."""
+    head = torch.load(Path(a.w) / "head.pt").to(DEV)
+    if DEV == "cpu": head = head.float()
+    o = torch.load(Path(a.w) / "out_hc.pt")
+    add = float(os.environ.get("MTP_OUTNORM_ADD", "0"))
+    p = {"o.hc_norm.weight": (o["norm"].float() + add).to(DEV), "o.input_mix_weight_down.weight": o["down"].float().view(-1, HC * H).to(DEV),
+         "o.input_mix_weight_up.weight": o["up"].float().view(HC * H, -1).to(DEV)}
+    for path in a.dump.split(","):
+        if os.path.exists(path + ".lab.npy") and not a.dry: print(f"{path}: labelled already"); continue
+        seqs = read_dump_one(path)
+        if a.dry: seqs = seqs[-a.n_eval:]
+        out, agree, tot, tail_a, tail_n = [], 0, 0, 0, 0
+        for toks, chunks in seqs:
+            Rn = sum(c[1] for c in chunks)
+            lab = np.empty(Rn, dtype=np.int32)
+            for s0 in range(0, Rn, 512):
+                R = seq_rows(path, chunks, s0, min(Rn, s0 + 512)).to(DEV)
+                with torch.no_grad():
+                    mixed, _ = gr_read(R.view(-1, HC, H), p, "o.", inject=False)
+                    lab[s0:s0 + R.shape[0]] = (mixed.to(head.dtype) @ head.T).argmax(-1).cpu().numpy()
+            m = min(Rn, len(toks) - 1)
+            eq = lab[:m] == toks[1:m + 1]
+            agree += int(eq.sum()); tot += m; tail_a += int(eq[-128:].sum()); tail_n += len(eq[-128:])
+            out.append(lab)
+        print(f"{path}: {len(seqs)} sequences, {tot} rows; the backbone's choice is the text's next token at {100 * agree / max(tot, 1):.1f}% of rows, "
+              f"{100 * tail_a / max(tail_n, 1):.1f}% over each sequence's last 128", flush=True)
+        if not a.dry: np.save(path + ".lab.npy", np.concatenate(out))
 
 def make_model(a):
     w, gu, dn = load_weights(a.rt)
@@ -257,15 +326,15 @@ def evaluate(m, path, seqs, mask, steps=int(os.environ.get("MTP_EVAL_STEPS", "3"
         Rp, n = Rout, len(lab)
         for j in range(1, steps):
             if n - j <= 0: break
-            toks = s[0][int(pos[0]):]                                        # (a long sequence starts at its tail window)
-            tn_j = torch.from_numpy(toks[j + 1: j + 1 + n - j]).to(DEV)      # token at cell+1 = label of the previous step
-            lab_j = torch.from_numpy(toks[j + 2: j + 2 + n - j]).to(DEV)
+            tn_j, lab_j, ok = chain_io(s, int(pos[0]), n, j)                  # (a long sequence starts at its tail window)
             pos_j = pos[: n - j] + j
             sample, Rp, _ = m(Rp[: n - j], tn_j[: len(lab_j)], pos_j[: len(lab_j)], kv=(k, v, pos))
             Rp = Rp
             lg = sample.to(torch.bfloat16) @ m.head.T
             if mask is not None: lg = lg.float() + mask
-            hit[j] += (lg.argmax(-1)[: len(lab_j)] == lab_j)[lo:].sum().item(); tot[j] += max(len(lab_j) - lo, 0)
+            h = lg.argmax(-1)[: len(lab_j)] == lab_j
+            if ok is not None: h = h & ok
+            hit[j] += h[lo:].sum().item(); tot[j] += max(len(lab_j) - lo, 0) if ok is None else ok[lo:].sum().item()
     return [h / max(t, 1) for h, t in zip(hit, tot)]
 
 def cmd_eval(a):
@@ -289,25 +358,31 @@ def cmd_train(a):
     opt = torch.optim.AdamW(params, lr=a.lr, weight_decay=0.0, betas=(0.9, 0.98))
     rng = np.random.default_rng(0)
     step, steps = 0, a.steps
+    # a labelled long sequence is drawn once per 2048 of its cells (each draw a random window), so text counts by its size
+    order = np.array([i for i, q in enumerate(tr) for _ in range(max(1, -(-sum(c[1] for c in q[1]) // 2048)) if q[3] is not None else 1)])
+    print(f"{len(order)} draws an epoch; {sum(q[3] is not None for q in tr)} sequences carry the backbone's labels", flush=True)
     while step < steps:
-        for i in rng.permutation(len(tr)):
-            R, tn, lab, pos, lo = batch(a.dump, tr[i])
+        for i in rng.permutation(order):
+            R, tn, lab, pos, lo = batch(a.dump, tr[i], rng=rng)
             def tgl(y, _lo=lo):   # the draft vocab's labels; cells before the answer of a long sequence are ignored
                 y = tgt(y).clone(); y[:_lo] = -100; return y
             lr = a.lr * min(1.0, (step + 1) / 50) * 0.5 * (1 + math.cos(math.pi * min(step / steps, 1.0)))
             for g in opt.param_groups: g["lr"] = lr
-            with torch.autocast("cuda", dtype=torch.bfloat16):
+            with torch.autocast("cpu" if DEV == "cpu" else "cuda", dtype=torch.bfloat16):
                 sample, Rout, (k, v) = m(R, tn, pos)
-                loss = F.cross_entropy(((sample @ m.head.T).float() + (mask if mask is not None else 0)), tgl(lab))
+                y0 = tgl(lab)
+                if not (y0 != -100).any(): continue
+                loss = F.cross_entropy(((sample @ m.head.T).float() + (mask if mask is not None else 0)), y0)
                 # steps 2..chain on the accepted path, each fed the previous step's own residual (FastMTP), weight chain_w^(j)
                 Rp, n, toks = Rout, len(lab), tr[i][0][int(pos[0]):]
                 for j in range(1, a.chain):
                     if n - j <= 0: break
-                    tn_j = torch.from_numpy(toks[j + 1: j + 1 + n - j]).to(DEV)
-                    lab_j = torch.from_numpy(toks[j + 2: j + 2 + n - j]).to(DEV)
+                    tn_j, lab_j, ok = chain_io(tr[i], int(pos[0]), n, j)
                     sj, Rp, _ = m(Rp[: n - j], tn_j[: len(lab_j)], pos[: n - j][: len(lab_j)] + j, kv=(k.detach(), v.detach(), pos))
-                    loss = loss + a.chain_w ** j * F.cross_entropy(((sj @ m.head.T).float() + (mask if mask is not None else 0)),
-                                                                   tgl(lab_j))
+                    yj = tgl(lab_j)
+                    if ok is not None: yj[~ok] = -100   # off the accepted path: the server never drafts this step from here
+                    if (yj != -100).any():
+                        loss = loss + a.chain_w ** j * F.cross_entropy(((sj @ m.head.T).float() + (mask if mask is not None else 0)), yj)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(params, 1.0)
@@ -359,6 +434,7 @@ if __name__ == "__main__":
     ap.add_argument("--steps", type=int, default=2000); ap.add_argument("--lr", type=float, default=2e-5)
     ap.add_argument("--eval-every", type=int, default=500); ap.add_argument("--freeze", default="")
     ap.add_argument("--chain", type=int, default=1); ap.add_argument("--chain-w", type=float, default=0.5)
+    ap.add_argument("--dry", action="store_true", help="label: check the last --n-eval sequences only, write nothing")
     ap.add_argument("--qat", action="store_true", help="train / eval with the server's Q4_0 projections, experts and head (straight-through)")
     a = ap.parse_args()
-    {"prep": prep, "eval": cmd_eval, "train": cmd_train, "export": cmd_export}[a.cmd](a)
+    {"prep": prep, "label": cmd_label, "eval": cmd_eval, "train": cmd_train, "export": cmd_export}[a.cmd](a)

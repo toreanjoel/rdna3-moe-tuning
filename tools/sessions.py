@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # sessions.py — replay requests from logged coding-tool sessions (Claude Code transcripts, *.jsonl): each request is a slice of a real session (user turns, assistant text, tool calls, tool results) that ends where the assistant spoke next; for the expert-profile test (tools/profile_ab.sh)
 # usage: sessions.py DIR OUT_PREFIX [--per 3] [--chars 28000] [--test 0.25]   -> OUT_PREFIX-train.jsonl, OUT_PREFIX-test.jsonl ({"id", "messages"}; whole sessions go to one side)
+#        sessions.py DIR OUT_PREFIX --windows [--chars 40000]   whole sessions as consecutive windows, each ending on an assistant turn held in
+#        "content" (the format tools/mtp_data.py replay reads): every token of a session, for the labelled MTP training set
 #        the output holds private session text: keep it out of git (write it under .nullrouter/)
 import argparse, glob, hashlib, json, os
 
@@ -32,10 +34,23 @@ def flat(path, cap):
 ap = argparse.ArgumentParser()
 ap.add_argument("dir"); ap.add_argument("out"); ap.add_argument("--per", type=int, default=3); ap.add_argument("--chars", type=int, default=28000)
 ap.add_argument("--test", type=float, default=0.25); ap.add_argument("--cap", type=int, default=3000)
+ap.add_argument("--windows", action="store_true")
 a = ap.parse_args()
 sets = {"train": [], "test": []}
 for path in sorted(glob.glob(os.path.join(a.dir, "*.jsonl"))):
     turns = flat(path, a.cap)
+    if a.windows:
+        side = "test" if int(hashlib.sha1(os.path.basename(path).encode()).hexdigest(), 16) % 100 < a.test * 100 else "train"
+        msgs, n, k = [], 0, 0
+        for r, t in turns:
+            if not msgs and r != "user": continue
+            msgs.append({"role": r, "content": t[:a.chars]}); n += len(msgs[-1]["content"])
+            if r == "assistant" and n >= a.chars:
+                sets[side].append({"id": f"{os.path.basename(path)[:8]}-w{k}", "messages": msgs[:-1], "content": msgs[-1]["content"]})
+                msgs, n, k = [], 0, k + 1
+        if len(msgs) >= 2 and msgs[-1]["role"] == "assistant" and n >= 2000:
+            sets[side].append({"id": f"{os.path.basename(path)[:8]}-w{k}", "messages": msgs[:-1], "content": msgs[-1]["content"]})
+        continue
     cuts = [i for i, (r, _) in enumerate(turns) if r == "assistant" and i >= 2]
     if not cuts: continue
     side = "test" if int(hashlib.sha1(os.path.basename(path).encode()).hexdigest(), 16) % 100 < a.test * 100 else "train"
@@ -55,4 +70,5 @@ for side, rows in sets.items():
         if r["id"] not in seen: seen.add(r["id"]); uniq.append(r)
     with open(f"{a.out}-{side}.jsonl", "w") as f:
         for r in uniq: f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    print(f"{side}: {len(uniq)} requests, {sum(len(m['content']) for r in uniq for m in r['messages']) // max(1, len(uniq))} chars each on average")
+    tot = sum(len(m['content']) for r in uniq for m in r['messages']) + sum(len(r.get('content', '')) for r in uniq)
+    print(f"{side}: {len(uniq)} requests, {tot // max(1, len(uniq))} chars each on average, {tot / 1e6:.1f}M chars in all")
