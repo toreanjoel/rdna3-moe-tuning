@@ -1,0 +1,4 @@
+== s40_1 [rt] 8192:114.5 32768:115.2  2.12 tokens/window, 18.33 ms/window 2.10 tokens/window, 18.25 ms/window  expert cache 9444 slots
+== s40_2 [rt-q4_0] 8192:119.2 32768:112.2  2.05 tokens/window, 18.55 ms/window 2.10 tokens/window, 18.43 ms/window  expert cache 9097 slots
+== s40_3 [rt] 8192:114.1 32768:115.6  2.12 tokens/window, 18.22 ms/window 2.10 tokens/window, 18.23 ms/window  expert cache 9444 slots
+== s40_4 [rt-q4_0] 8192:119.8 32768:111.1  2.05 tokens/window, 18.73 ms/window 2.10 tokens/window, 18.58 ms/window  expert cache 9097 slots

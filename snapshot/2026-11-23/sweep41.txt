@@ -1,0 +1,6 @@
+== 1 rt mean 131.1 tok/s over 12 requests
+== 1 rt-q4_0 mean 132.6 tok/s over 12 requests
+== 1 rt-q8_0 mean 130.0 tok/s over 12 requests
+== 2 rt mean 131.1 tok/s over 12 requests
+== 2 rt-q4_0 mean 132.6 tok/s over 12 requests
+== 2 rt-q8_0 mean 130.1 tok/s over 12 requests

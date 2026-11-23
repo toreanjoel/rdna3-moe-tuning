@@ -1,0 +1,86 @@
+diff --git a/include/strata/core/mtp.hpp b/include/strata/core/mtp.hpp
+index 07eefaf..bcdaaf7 100644
+--- a/include/strata/core/mtp.hpp
++++ b/include/strata/core/mtp.hpp
+@@ -316,6 +316,9 @@ private:
+     int32_t *grp_start_ = nullptr, *grp_counts_ = nullptr;
+     float* hit_xs_ = nullptr;
+     void* hit_scratch_ = nullptr;
++    int nat_gu_ = -1, nat_d_ = -1;          // rdna3-moe-tuning: native-format MTP experts (experts.txt)
++    size_t nat_bytes_ = 0;
++    void *nat_xq_ = nullptr, *nat_scratch_ = nullptr;
+     float* sh_scratch_ = nullptr;
+     uint16_t* x_bf16_ = nullptr;
+     float* head_logits_ = nullptr;
+diff --git a/src/core/mtp.cpp b/src/core/mtp.cpp
+index cf7fa84..05a3c13 100644
+--- a/src/core/mtp.cpp
++++ b/src/core/mtp.cpp
+@@ -28,6 +28,7 @@
+ #include "strata/kernels/rope.hpp"
+ #include "strata/kernels/router_top10.hpp"
+ #include "strata/kernels/s2_expert_grouped.hpp"
++#include "strata/kernels/iq_kernels.hpp"
+ #include "strata/kernels/sampler.hpp"
+ #include "strata/kernels/shared_expert.hpp"
+ #include "strata/kernels/verify_kernels.hpp"
+@@ -369,6 +370,7 @@ bool MtpDrafter::load(const std::string& rt_dir, const ModelGeometry& g, Session
+         }
+         dense_ = shared->dense_;
+         experts_ = shared->experts_;
++        nat_gu_ = shared->nat_gu_; nat_d_ = shared->nat_d_; nat_bytes_ = shared->nat_bytes_;
+         tensors_ = shared->tensors_;
+         owns_weights_ = false;
+         owns_draft_head_ = false;
+@@ -406,7 +408,18 @@ bool MtpDrafter::load(const std::string& rt_dir, const ModelGeometry& g, Session
+     }
+     // ---- the 512 routed experts, one blob each
+     if (shared == nullptr) {
+-        const uint64_t bytes = (uint64_t) g.n_expert * strata::kernels::cpu::BLOB;
++        if (FILE* ft = std::fopen((rt_dir + "/experts.txt").c_str(), "r")) {   // rdna3-moe-tuning: native-format experts
++            if (std::fscanf(ft, "%d %d", &nat_gu_, &nat_d_) != 2) { nat_gu_ = nat_d_ = -1; }
++            std::fclose(ft);
++            if (nat_gu_ >= 0) {
++                if (!strata::kernels::native_expert_supported(nat_gu_, nat_d_, g.n_embd, g.n_ff)) {
++                    err = "mtp: experts.txt names a gate/up / down pair the native kernels lack"; return false;
++                }
++                nat_bytes_ = strata::kernels::native_expert_layout(nat_gu_, nat_d_, g.n_embd, g.n_ff).bytes;
++                std::fprintf(stderr, "strata mtp: native experts (gate/up type %d, down type %d, %zu B each)\n", nat_gu_, nat_d_, nat_bytes_);
++            }
++        }
++        const uint64_t bytes = (uint64_t) g.n_expert * (nat_gu_ >= 0 ? (uint64_t) nat_bytes_ : (uint64_t) strata::kernels::cpu::BLOB);
+         // Loader fix (0.1.15+loaderfix.2): each 64 MiB read below reached the disk as ~16k 4095-byte reads under
+         // MSVC's `basic_filebuf::xsgetn`, which is what made 675 MiB of drafter experts take minutes.
+         FILE* f = std::fopen((rt_dir + "/experts.bin").c_str(), "rb");
+@@ -510,6 +523,10 @@ bool MtpDrafter::load(const std::string& rt_dir, const ModelGeometry& g, Session
+         hit_xq_ = b.take<uint8_t>(T * (N / 32) * 34); hit_xs_ = b.take<float>(T * (N / 32));
+         hit_scratch_ = b.take<uint8_t>(strata::kernels::moe_hit_grouped_scratch_bytes((int64_t) (T * K), g.n_embd, g.n_ff));
+         sh_scratch_ = (float*) b.take<uint8_t>(strata::kernels::shared_expert_scratch_bytes(g.n_ff));
++        if (nat_gu_ >= 0) {
++            nat_xq_ = b.take<uint8_t>(T * (N / 32) * 36);
++            nat_scratch_ = b.take<uint8_t>(strata::kernels::native_expert_scratch_bytes((int64_t) (T * K), g.n_ff));
++        }
+         x_bf16_ = b.take<uint16_t>(N);
+         out_ids_ = b.take<int32_t>(T + 4);
+         probs_ = b.take<float>(T + 4);
+@@ -1245,11 +1262,20 @@ bool MtpDrafter::record_rest(int step_row, cudaStream_t cs, std::string& err) {
+             } catch (const std::exception& e) { err = std::string("mtp route-resident: ") + e.what(); return false; }
+         }
+         g_mp.stamp(9, cs);
++        if (nat_gu_ >= 0) {   // rdna3-moe-tuning: native-format experts
++            moe_group_resident(ids_, (int) (T * K), (int) K, experts_, (int64_t) nat_bytes_, grp_ptr_,
++                               grp_start_, grp_counts_, hit_dst_, hit_slot_, cs);
++            strata::kernels::quantize_q8_1_rows(mixed_, (int64_t) T, (int64_t) N, nat_xq_, cs);
++            strata::kernels::native_expert_grouped(strata::kernels::native_expert_layout(nat_gu_, nat_d_, g.n_embd, g.n_ff),
++                                                   grp_ptr_, grp_start_, grp_counts_, hit_dst_, hit_slot_, (int64_t) T * K,
++                                                   (int64_t) T * K, nat_xq_, nat_scratch_, parts_, cs);
++        } else {
+         moe_group_resident(ids_, (int) (T * K), (int) K, experts_, (int64_t) strata::kernels::cpu::BLOB, grp_ptr_,
+                            grp_start_, grp_counts_, hit_dst_, hit_slot_, cs);
+         quantize_q8_0_scaled(mixed_, hit_xq_, hit_xs_, (int64_t) T * N, cs);
+         moe_grouped_s2(grp_ptr_, grp_start_, grp_counts_, hit_dst_, hit_slot_, (int64_t) T * K, (int64_t) T * K, hit_xq_,
+                        hit_xs_, hit_scratch_, parts_, cs);
++        }
+         g_mp.stamp(10, cs);
+         if (branch_on) {
+             if (cudaStreamWaitEvent(cs, sh_join_, 0) != cudaSuccess) { err = "mtp: the shared expert's join"; return false; }

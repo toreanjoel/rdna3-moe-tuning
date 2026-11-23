@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # strata-rdna3.sh — install, run and benchmark the RDNA3 Strata fork (nicejunjie/Strata-rdna3) on one RX 7900 XTX.
-# Usage: ./strata-rdna3.sh install | serve | perf | stop | status | monitor | speed | quality | tune | patch | build | bench [lengths] | uninstall
-# Env: FAST CTX HOST PORT SETUP GPUS TUNE SCLK MCLK VO WATTS EPP BOOST, XENV/XARGS (engine overrides), NAME/REPEATS (bench)
+# Usage: ./strata-rdna3.sh install | mtp4 | serve | perf | stop | status | monitor | speed | quality | tune | patch | build | bench [lengths] | uninstall
+# Env: FAST MTP CTX HOST PORT SETUP GPUS TUNE SCLK MCLK VO WATTS EPP BOOST, XENV/XARGS (engine overrides), NAME/REPEATS (bench)
 set -euo pipefail
 
 REPO=https://github.com/nicejunjie/Strata-rdna3
@@ -31,7 +31,10 @@ CTX=${CTX:-131072}                                     # max context (the fork s
 # serial tail, per-format expert layouts.  GR_TAIL / EXP_AUTO need patches/*.patch (./strata-rdna3.sh build); an
 # unpatched engine ignores them
 KERNENV="STRATA_RDNA_PAIR=1 STRATA_GR_TAIL=1 STRATA_EXP_AUTO=1"
-export STRATA_X_ENV="STRATA_HIPBLASLT_TUNING=$TABLE $KERNENV $FASTENV ${XENV:-}" STRATA_X_ARGS="--max-context $CTX ${XARGS:-}"
+# MTP draft head: its 512 experts at q4_0 (data/mtp/rt-q4_0, built by `mtp4`; patches/mtp-native.patch) instead of the
+# shipped q2_0 (42% RMS error): varied chats +1.1% (sweep41). MTP=2 = the shipped head.
+MTP=${MTP:-4}; MTPARG=""; [ "$MTP" = 4 ] && [ -s "$D/mtp/rt-q4_0/experts.txt" ] && MTPARG="--mtp $D/mtp/rt-q4_0"
+export STRATA_X_ENV="STRATA_HIPBLASLT_TUNING=$TABLE $KERNENV $FASTENV ${XENV:-}" STRATA_X_ARGS="--max-context $CTX $MTPARG ${XARGS:-}"
 
 # setup.py moves the models of every Strata install listed in ~/.config/strata; a private config stops that.
 export XDG_CONFIG_HOME=$SRC/.config
@@ -82,7 +85,22 @@ install() {
   patch_fork
   say "kernel patches (patches/*.patch) + rebuild"
   (build_engine)
+  mtp4
   say "done"; du -sh "$SRC" "$D"/packs "$D"/mtp 2>/dev/null
+}
+
+# The MTP head's experts at q4_0 (once, ~5 GB BF16 download of the MTP tensors only, then 1.4 GB runtime): fetch,
+# pack, native layout (tools/mtp_rt_native.py). The BF16 tensors stay in data/mtp/bf16 for other formats.
+mtp4() {
+  local here; here=$(cd "$(dirname "$0")" && pwd)
+  [ -s "$D/mtp/rt-q4_0/experts.txt" ] && { echo "MTP q4_0 head already built"; return; }
+  say "MTP head experts at q4_0"
+  cd "$SRC"
+  local py=".venv/bin/python" gp="PYTHONPATH=$SRC/third_party/llama.cpp/gguf-py"
+  [ -s "$D/mtp/bf16/mtp-manifest.json" ] && $py tools/mtp_fetch.py verify --out "$D/mtp/bf16" >/dev/null 2>&1 || \
+    $py tools/mtp_fetch.py fetch --out "$D/mtp/bf16"
+  [ -s "$D/mtp/mtp-q4_0.gguf" ] || env $gp $py tools/mtp_pack.py --src "$D/mtp/bf16" --experts q4_0 --out "$D/mtp/mtp-q4_0.gguf"
+  env $gp $py "$here/tools/mtp_rt_native.py" --gguf "$D/mtp/mtp-q4_0.gguf" --base "$D/mtp/rt" --out "$D/mtp/rt-q4_0"
 }
 
 # Local patches to the fork (idempotent): bench.py without vision; run.py takes overrides from XENV / XARGS.
@@ -207,6 +225,7 @@ uninstall() {
 
 case "${1:-}" in
   install) install ;;
+  mtp4) mtp4 ;;
   serve) serve ;;
   perf) SCLK=3000; MCLK=1400; serve ;;   # opt-in perf mode (coil whine, at the 294 W cap): ~122 vs ~114 tok/s; `serve` returns to daily clocks
   stop) stop_all ;;

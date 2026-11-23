@@ -204,6 +204,7 @@ would need more power. Raw output: [`snapshot/2026-11-22/sweep19.txt`](snapshot/
 | `MMVF_ROWS` / `TSUM` / `ATTN_LANECELL` / `Q6_PACKED`, each alone (2026-11-23, `snapshot/2026-11-23/sweep34.txt`) | 114.3 → 113.2 / 114.3 / 114.2 / 115.1; Q6_PACKED's ms/window is unchanged and its answers differ (acceptance luck, not speed) | no |
 | `STRATA_EXP_AUTO=2` (IQ3_XXS gate/up + SwiGLU + q8_1 in one launch; 2026-11-23) | 114.4 → 114.0, same answers: the launch saved is lost in the slower fused kernel | no |
 | Tree drafting (also verify the MTP head's runner-up; measured with [`patches/mtp-top2.patch`](patches/mtp-top2.patch), 2026-11-23) | runner-up right on 33–41% of rejected drafts: ~+0.15 tokens a window (+7% at best) for up to 3 more verify rows | no |
+| MTP head experts at q4_0 / q8_0 instead of the shipped q2_0 ([`patches/mtp-native.patch`](patches/mtp-native.patch), `./strata-rdna3.sh mtp4`; 2026-11-23) | varied chats 131.1 → 132.6 (q4_0) / 130.0 (q8_0); 2-prompt bench mixed (8K +4%, 32K −3% for q4_0, the text changes); q8 keeps +4–8% more tokens but costs ~960 expert-cache slots | **q4_0 yes** (`MTP=2` = shipped) |
 | `STRATA_HC_REQ8=1` | 114 / 107, prompts −5% | no |
 | `STRATA_COPY_HIP_PRIO=1`, `--host-core sibling` | −3% / none | no |
 | higher core clock (no SCLK cap) | ~+1 tok/s, coil whine | no |

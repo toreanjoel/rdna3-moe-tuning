@@ -244,3 +244,16 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
 - 482 windows: rejected / runner-up right by depth 91/33 (36%), 64/26 (41%), 36/12 (33%) -> a sibling at every depth
   would keep ~0.15 more tokens a window (2.11 -> ~2.26, +7% at best) for up to 3 extra verify rows a window (spec 5/6
   showed wider windows cost about what they keep). Tree drafting: not worth building. Retraining the head is the lever left.
+
+## MTP head experts at higher precision 2026-11-23 (patches/mtp-native.patch, tools/mtp_rt_native.py, `./strata-rdna3.sh mtp4`)
+- The shipped MTP head packs its 512 experts at q2_0: relative RMS error 0.42 (q4_0 0.089, q8_0 0.0055). The engine ran
+  them through a Q2_0-only kernel (moe_grouped_s2). mtp-native.patch: an rt dir with experts.txt ("<gu type> <down type>")
+  holds the experts in the main model's native layout and runs them through native_expert_grouped (q8_1 activations).
+  BF16 MTP tensors fetched with tools/mtp_fetch.py (5.2 GB, sha-verified) into data/mtp/bf16.
+- VRAM: q2_0 0.71 GB, q4_0 1.42 GB (expert cache 9444 -> 9097 slots), q8_0 2.67 GB (-> 8480 slots).
+- Answers change with the head even at FAST=0 (window sizes change the verify numerics), so the 2-prompt bench mixes in
+  text luck. Bench (8K / 32K tok/s, 2 rounds): q2 114.3 / 115.4; q8 122.1 / 115.6 (sweep38); q4 119.5 / 111.6 (sweep40).
+  FAST=0 (sweep39): q2 101.75 / 107.4, q8 103.1 / 105.95; tokens/window 2.05 / 2.02 -> 2.13 / 2.19 but +1-2 ms/window.
+- Varied chats (tools/chatbench.py, 12 requests, 2 rounds, identical both rounds; sweep41): q2 131.1, q4 132.6 (+1.1%),
+  q8 130.0-130.1 (-0.8%). Default now q4_0 (MTP=4; MTP=2 = shipped head). Precision is not the head's main limit:
+  q8 keeps only +4-8% more tokens. Retraining (distilling to this IQ3_S model) is next.

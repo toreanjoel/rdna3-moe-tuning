@@ -1,0 +1,8 @@
+== s39_1 [rt] 8192:101.7 32768:107.3  2.05 tokens/window, 19.19 ms/window 2.02 tokens/window, 18.67 ms/window 
+      4 SAME 
+== s39_2 [rt-q8_0] 8192:103.2 32768:106.0  2.13 tokens/window, 20.15 ms/window 2.19 tokens/window, 20.59 ms/window 
+      4 DIFF 
+== s39_3 [rt] 8192:101.8 32768:107.5  2.05 tokens/window, 19.14 ms/window 2.02 tokens/window, 18.68 ms/window 
+      4 SAME 
+== s39_4 [rt-q8_0] 8192:103.0 32768:105.9  2.13 tokens/window, 20.21 ms/window 2.19 tokens/window, 20.61 ms/window 
+      4 DIFF 

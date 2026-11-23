@@ -1,0 +1,4 @@
+== s38_1 [rt] 8192:114.3 32768:115.1  2.12 tokens/window, 18.30 ms/window 2.10 tokens/window, 18.31 ms/window 
+== s38_2 [rt-q8_0] 8192:122.2 32768:115.5  2.15 tokens/window, 18.74 ms/window 2.13 tokens/window, 18.36 ms/window 
+== s38_3 [rt] 8192:114.3 32768:115.8  2.12 tokens/window, 18.22 ms/window 2.10 tokens/window, 18.19 ms/window 
+== s38_4 [rt-q8_0] 8192:122.0 32768:115.7  2.15 tokens/window, 18.65 ms/window 2.13 tokens/window, 18.37 ms/window 
