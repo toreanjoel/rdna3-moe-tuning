@@ -214,3 +214,10 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
   blocks only add their launch + one PCIe poll of the mapped flag (~2-4 us a layer). Reverted on the box.
 - Conclusion with the 11-22 MALL work: no idle DRAM window exists inside one launch that isn't on the critical path.
   What is left is the ~25 dependent kernels a layer: fewer of them only pays where it shortens that chain.
+
+## GDN step split alone 2026-11-23 (DROPPED; s33_0..3 on the box, 8K, REP 2, alternated)
+- gdn_step_norm_multi runs one 512-thread block per head (32 blocks) over a 2 MB state. STRATA_GDN_SPLIT=1 (4 blocks a
+  head + gdn_out_norm_kernel) was only tried inside the gfx1151 bundle; alone it is bitwise (SAME) but slower:
+  18.50 / 18.50 -> 18.75 / 18.78 ms/window, 114.5 / 114.3 -> 113.0 / 112.8 tok/s. 4x the blocks gives the body
+  nothing, the extra launch costs ~7 us a layer. The recurrence is not the GDN gap; a fused last-block-norm split isn't worth building.
+- Daily MCLK 1400 now (117.7 / 117.4 plain bench; DECODE_TIMING + REP 2 reads ~114).
