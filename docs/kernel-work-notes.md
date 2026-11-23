@@ -228,7 +228,7 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
   DIFF: same ms/window, so the +0.7% is a luckier acceptance on changed tokens, not speed. With GDN_SPLIT (above) every
   item of the gfx1151 set is now ruled out alone on gfx1100. SH_STREAM was already out (graph branches cost here).
 
-## Per-layer chain and the fusion budget 2026-11-23 (logs/kprof-k5 on the box, .nullrouter/tools/kseq.py; s35_1..4)
+## Per-layer chain and the fusion budget 2026-11-23 (logs/kprof-k5 on the box, tools/kseq.py; s35_1..4)
 - A GDN layer-window is 15 dependent launches: hc read, qkv+z mix, conv_ab, step_norm, out q6k, hc read, router_publish,
   shexp gate/up mix, swiglu_quantize, shexp down IQ4_NL, wait_flag_copy (plan), expert gu, swiglu_q8_1_entries, expert
   down, combine_cpu. QSA layers ~28. ~720-800 launches a window.
