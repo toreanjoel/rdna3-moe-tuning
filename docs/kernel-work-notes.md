@@ -333,3 +333,22 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
   STRATA_FUSE_HITS=1 (gfx12 default: moe_hit_add folded into the combine): 136.6 / 136.5 vs 137.8 / 136.7, 20.85 vs 20.6 ms a
   window: slower on gfx1100, dropped. With CUMX on, two runs of one config can pick different windows (the rule reads the
   measured tokens per ms), so kernel folds are A/B'd with STRATA_SPEC_CUMX=0 (identical windows -> compare ms a window).
+- q8_0 on the most-used MTP experts only (tools/mtp_mix.py, mix_ab.sh; snapshot/2026-11-23/mix-ab.txt): routing over 166K cells:
+  the top 16 / 32 / 64 / 128 / 256 of the 512 experts hold 18 / 29 / 46 / 67 / 89% of the routing weight (27 never routed).
+  Emulated in the q8_0 layout (cold experts = the q4_0 pack's values), tokens kept a round with the new defaults: all q4_0 2.834,
+  all q8_0 2.829, 64 hot at q8_0 2.781, 128 hot 2.812 (step-1 acceptance 81.8 / 81.4 / 78.3 / 80.5%: run-to-run spread, no
+  trend). A real mixed pack would cost 150 / 300 MiB of VRAM (~70 / ~145 of ~9,100 expert slots) and keep nothing more.
+  DROPPED: precision of the head's experts is not what limits it (mtp_check: all Q4_0 costs ~1 point of top-1 in total).
+- Expert profile learned from coding sessions (tools/profile_ab.sh; --expert-profile-save over 79 logged session replays, then
+  --expert-profile; snapshot/2026-11-23/profile-ab.txt, 3 alternated rounds): held-out sessions (26 requests) VRAM hit rate
+  shipped 90.71 / 90.44 / 90.99% vs learned 89.92 / 90.95 / 91.47% (90.7 vs 90.8), 144.3 / 144.5 / 141.5 vs 140.8 / 143.7 /
+  149.8 tok/s (the spread is tokens kept a window, 2.99-3.27, not the cache). Varied chats: 90.3 vs 89.8% hits, 138.7 / 135.1 /
+  135.2 vs 132.6 / 132.8 / 132.7 tok/s (-2.7%, 3 of 3). DROPPED: the adaptive cache already reaches the same hit rate on
+  sessions from the shipped profile, and a session-only profile is worse off its own domain.
+- QSA folds (12 layers, patches qsa-kv-pair / qsa-gate-q8 / qsa-idx-pair, all opt-in =1; fork's STRATA_NORM_ROPE=1): chat A/Bs
+  cannot resolve them - one config lands on one of a few answer trajectories (ab51: 838 / 858 / 854 windows, 138.7 / 135.6 /
+  137.9 tok/s for the SAME kernels; FAST=0 does not remove it, ab52), because CPU and GPU expert arithmetic differ and the
+  adaptive cache decides which runs where. On shared trajectories: STRATA_QSA_KV_PAIR (key + value projections in one
+  rdna_mmvq_pair launch) -0.02..-0.07 ms a window, answers identical; STRATA_QSA_GATE_Q8 (attention gate + q8_1 quantize, two
+  elementwise kernels of one thread shape, in one launch) -0.03..-0.09 ms, answers identical. foldbench.sh (fixed 8K prompt)
+  and qcheck.sh are the tools for these.

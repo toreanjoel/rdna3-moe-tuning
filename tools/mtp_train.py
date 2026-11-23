@@ -12,7 +12,7 @@ import torch.nn.functional as F
 
 H, HC, LR, NH, NKV, HD, NROT, FF, NE, K = 2560, 4, 320, 24, 2, 256, 64, 640, 512, 10
 EPS, THETA = 1e-6, 1e7
-LONG, TAIL = 1536, int(os.environ.get("MTP_TAIL", "384"))   # sequences over LONG cells: loss / eval on the last TAIL only
+TAIL = int(os.environ.get("MTP_TAIL", "384"))   # session replays: loss / eval on the last TAIL cells (the model's own answer)
 D = Path(os.environ.get("MTP_D", Path.home() / "work/rdna3/data/mtp"))
 DEV = os.environ.get("MTP_DEV", "cuda")
 
@@ -203,7 +203,8 @@ def batch(path, seq, dev=DEV, max_len=2048):
     R = seq_rows(seq[2] if len(seq) > 2 else path, chunks)
     n = min(R.shape[0], len(toks) - 2)   # cell i: R_i, token i+1, label i+2
     s = max(0, n - max_len)              # a long sequence (a session replay): its last max_len cells, where the answer is
-    lo = n - s - TAIL if n > LONG else 0 # ... and only the answer's cells count (the session's own text is not this model's)
+    src = str(seq[2] if len(seq) > 2 else path)
+    lo = max(0, n - s - TAIL) if "-sess" in src else 0   # a session replay (data/mtp/*-sess): only the answer's cells count, the session's own text is not this model's
     return (R[s:n].to(dev), torch.from_numpy(toks[s + 1:n + 1]).to(dev), torch.from_numpy(toks[s + 2:n + 2]).to(dev),
             torch.arange(s, n, device=dev), lo)
 

@@ -1,0 +1,45 @@
+mean 148.0 tok/s decode over 79 requests (9434 tokens, prompt 1839 tok/s, 0 failed)
+strata serve: expert profile saved to /home/bonfire/work/rdna3/data/expert-profile-coding.bin (periodic)
+strata serve: expert profile saved to /home/bonfire/work/rdna3/data/expert-profile-coding.bin (periodic)
+strata serve: expert profile saved to /home/bonfire/work/rdna3/data/expert-profile-coding.bin (periodic)
+-rw-rw-r-- 1 bonfire bonfire 196632 Nov 21 18:32 engine/data/expert-profile.bin
+-rw-rw-r-- 1 bonfire bonfire 196632 Nov 23 23:14 /home/bonfire/work/rdna3/data/expert-profile-coding.bin
+== base_1  XENV=[] XARGS=[]
+mean 144.3 tok/s decode over 26 requests (2044 tokens, prompt 1751 tok/s, 0 failed)
+   656 windows: VRAM hit rate 90.71% (32.81 hits, 3.36 CPU entries a layer-window), 3.82 rows, 3.12 tokens, 22.40 ms a window
+== coding_1  XENV=[] XARGS=[--expert-profile /home/bonfire/work/rdna3/data/expert-profile-coding.bin]
+mean 140.8 tok/s decode over 26 requests (2037 tokens, prompt 1753 tok/s, 0 failed)
+   671 windows: VRAM hit rate 89.92% (32.51 hits, 3.64 CPU entries a layer-window), 3.82 rows, 3.04 tokens, 22.90 ms a window
+== base_2  XENV=[] XARGS=[]
+mean 144.5 tok/s decode over 26 requests (2255 tokens, prompt 1747 tok/s, 0 failed)
+   702 windows: VRAM hit rate 90.44% (33.62 hits, 3.55 CPU entries a layer-window), 3.93 rows, 3.21 tokens, 22.79 ms a window
+== coding_2  XENV=[] XARGS=[--expert-profile /home/bonfire/work/rdna3/data/expert-profile-coding.bin]
+mean 143.7 tok/s decode over 26 requests (2063 tokens, prompt 1753 tok/s, 0 failed)
+   658 windows: VRAM hit rate 90.95% (33.41 hits, 3.33 CPU entries a layer-window), 3.87 rows, 3.14 tokens, 22.59 ms a window
+== base_3  XENV=[] XARGS=[]
+mean 141.5 tok/s decode over 26 requests (2063 tokens, prompt 1747 tok/s, 0 failed)
+   689 windows: VRAM hit rate 90.99% (31.64 hits, 3.13 CPU entries a layer-window), 3.67 rows, 2.99 tokens, 21.81 ms a window
+== coding_3  XENV=[] XARGS=[--expert-profile /home/bonfire/work/rdna3/data/expert-profile-coding.bin]
+mean 149.8 tok/s decode over 26 requests (2023 tokens, prompt 1751 tok/s, 0 failed)
+   618 windows: VRAM hit rate 91.47% (34.91 hits, 3.26 CPU entries a layer-window), 4.01 rows, 3.27 tokens, 22.72 ms a window
+ab done
+== base_1  XENV=[] XARGS=[]
+mean 138.7 tok/s over 6 requests
+   814 windows: VRAM hit rate 90.59% (29.94 hits, 3.11 CPU entries a layer-window), 3.49 rows, 2.83 tokens, 20.57 ms a window
+== coding_1  XENV=[] XARGS=[--expert-profile /home/bonfire/work/rdna3/data/expert-profile-coding.bin]
+mean 132.6 tok/s over 6 requests
+   829 windows: VRAM hit rate 89.70% (29.85 hits, 3.43 CPU entries a layer-window), 3.52 rows, 2.78 tokens, 21.23 ms a window
+== base_2  XENV=[] XARGS=[]
+mean 135.1 tok/s over 6 requests
+   827 windows: VRAM hit rate 90.21% (29.78 hits, 3.23 CPU entries a layer-window), 3.49 rows, 2.79 tokens, 20.79 ms a window
+== coding_2  XENV=[] XARGS=[--expert-profile /home/bonfire/work/rdna3/data/expert-profile-coding.bin]
+mean 132.8 tok/s over 6 requests
+   836 windows: VRAM hit rate 89.91% (29.81 hits, 3.34 CPU entries a layer-window), 3.51 rows, 2.76 tokens, 20.99 ms a window
+== base_3  XENV=[] XARGS=[]
+mean 135.2 tok/s over 6 requests
+   827 windows: VRAM hit rate 90.20% (29.75 hits, 3.23 CPU entries a layer-window), 3.49 rows, 2.79 tokens, 20.78 ms a window
+== coding_3  XENV=[] XARGS=[--expert-profile /home/bonfire/work/rdna3/data/expert-profile-coding.bin]
+mean 132.7 tok/s over 6 requests
+   836 windows: VRAM hit rate 89.91% (29.81 hits, 3.34 CPU entries a layer-window), 3.51 rows, 2.76 tokens, 21.00 ms a window
+ab done
+profile_ab done

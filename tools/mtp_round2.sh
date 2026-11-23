@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # mtp_round2.sh — MTP head retrain round 2 on the box: diverse self-instruct prompts + real coding-session continuations (answers greedy and sampled, with and without thinking), prompt-path dumps, QAT training from the shipped weights, held-out evals (other prompts, other sessions), export, 3-round A/B against the current head
-# usage (box, via setsid nohup): [N=2000 MAXT=384 STEPS=4000 VOCAB=engine/rdna3/draft_vocab_zh60k.bin] tools/mtp_round2.sh   -> logs/mtp-round2.txt
+# usage (box, via setsid nohup): [N=1500 MAXT=384 STEPS=4000 VOCAB=tools/draft_vocab_plus.bin] tools/mtp_round2.sh   -> logs/mtp-round2.txt
 #        needs data/sessions/sess6-{train,test}.jsonl (tools/sessions.py --per 6) and data/mtp/check/replay.bin (KEEP=1 tools/mtp_check.sh)
 #        writes data/mtp/{train2,train-sess,test-sess}/dump.bin (~20 KB a token: ~35 GB in all), data/mtp/ft2/ckpt.pt, data/mtp/rt-ft2
 cd ~/work/rdna3
-M=data/mtp; OUT=logs/mtp-round2.txt; N=${N:-2000}; MAXT=${MAXT:-384}; STEPS=${STEPS:-4000}
-VOCAB=${VOCAB:-engine/rdna3/draft_vocab_zh60k.bin}; TP=train-venv/bin/python
+M=data/mtp; OUT=logs/mtp-round2.txt; N=${N:-1500}; MAXT=${MAXT:-384}; STEPS=${STEPS:-4000}
+VOCAB=${VOCAB:-tools/draft_vocab_plus.bin}; TP=train-venv/bin/python
 {
 date
 for s in train test; do   # session requests are their own prompt files (the pipeline skips prompt writing when the file is there)

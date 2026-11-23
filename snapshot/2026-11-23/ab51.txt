@@ -1,0 +1,31 @@
+== k0_1  XENV=[STRATA_SPEC_CUMX=0] XARGS=[]
+mean 138.7 tok/s over 6 requests
+   838 windows: VRAM hit rate 90.32% (27.86 hits, 2.99 CPU entries a layer-window), 3.27 rows, 2.75 tokens, 20.05 ms a window
+== kv_1  XENV=[STRATA_SPEC_CUMX=0 STRATA_QSA_KV_PAIR=1] XARGS=[]
+mean 135.8 tok/s over 6 requests
+   858 windows: VRAM hit rate 90.19% (27.47 hits, 2.99 CPU entries a layer-window), 3.23 rows, 2.69 tokens, 19.94 ms a window
+== gq_1  XENV=[STRATA_SPEC_CUMX=0 STRATA_QSA_GATE_Q8=1] XARGS=[]
+mean 138.9 tok/s over 6 requests
+   838 windows: VRAM hit rate 90.32% (27.86 hits, 2.99 CPU entries a layer-window), 3.27 rows, 2.75 tokens, 20.02 ms a window
+== nr_1  XENV=[STRATA_SPEC_CUMX=0 STRATA_NORM_ROPE=1] XARGS=[]
+mean 137.5 tok/s over 6 requests
+   854 windows: VRAM hit rate 90.67% (27.89 hits, 2.87 CPU entries a layer-window), 3.25 rows, 2.70 tokens, 19.73 ms a window
+== all_1  XENV=[STRATA_SPEC_CUMX=0 STRATA_QSA_KV_PAIR=1 STRATA_QSA_GATE_Q8=1 STRATA_NORM_ROPE=1] XARGS=[]
+mean 137.9 tok/s over 6 requests
+   854 windows: VRAM hit rate 90.67% (27.89 hits, 2.87 CPU entries a layer-window), 3.25 rows, 2.70 tokens, 19.67 ms a window
+== k0_2  XENV=[STRATA_SPEC_CUMX=0] XARGS=[]
+mean 135.6 tok/s over 6 requests
+   858 windows: VRAM hit rate 90.19% (27.47 hits, 2.99 CPU entries a layer-window), 3.23 rows, 2.69 tokens, 19.98 ms a window
+== kv_2  XENV=[STRATA_SPEC_CUMX=0 STRATA_QSA_KV_PAIR=1] XARGS=[]
+mean 136.0 tok/s over 6 requests
+   858 windows: VRAM hit rate 90.19% (27.47 hits, 2.99 CPU entries a layer-window), 3.23 rows, 2.69 tokens, 19.91 ms a window
+== gq_2  XENV=[STRATA_SPEC_CUMX=0 STRATA_QSA_GATE_Q8=1] XARGS=[]
+mean 139.2 tok/s over 6 requests
+   838 windows: VRAM hit rate 90.32% (27.86 hits, 2.99 CPU entries a layer-window), 3.27 rows, 2.75 tokens, 19.96 ms a window
+== nr_2  XENV=[STRATA_SPEC_CUMX=0 STRATA_NORM_ROPE=1] XARGS=[]
+mean 138.3 tok/s over 6 requests
+   838 windows: VRAM hit rate 89.83% (27.81 hits, 3.15 CPU entries a layer-window), 3.28 rows, 2.75 tokens, 20.09 ms a window
+== all_2  XENV=[STRATA_SPEC_CUMX=0 STRATA_QSA_KV_PAIR=1 STRATA_QSA_GATE_Q8=1 STRATA_NORM_ROPE=1] XARGS=[]
+mean 138.1 tok/s over 6 requests
+   854 windows: VRAM hit rate 90.67% (27.89 hits, 2.87 CPU entries a layer-window), 3.25 rows, 2.70 tokens, 19.66 ms a window
+ab done

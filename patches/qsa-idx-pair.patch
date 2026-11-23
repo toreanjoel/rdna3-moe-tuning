@@ -1,0 +1,92 @@
+diff --git a/include/strata/kernels/bf16_gemv.hpp b/include/strata/kernels/bf16_gemv.hpp
+index 19c4207..e474313 100644
+--- a/include/strata/kernels/bf16_gemv.hpp
++++ b/include/strata/kernels/bf16_gemv.hpp
+@@ -63,6 +63,11 @@ void bf16_gemv_fp32_mmvf_multi(const float* x, int64_t ldx, const uint16_t* w, f
+ /// S26 STRATA_LFUSE: bf16_gemv_fp32_mmvf_multi(x, ldx, w, y, ldy, n_in, n_out, n_tok) plus the 1-row
+ /// bf16_gemv_fp32_mmvf_multi(x, ldx, w_aux, y_aux, ldy_aux, n_in, 1, n_tok) in ONE launch, every output bitwise the
+ /// two calls'. Returns false (nothing launched) unless the rows path applies (STRATA_MMVF_ROWS=1, n_out >= 64, 2-8 rows).
++/// rdna3-moe-tuning STRATA_QSA_IDX_PAIR: two bf16 matrices over the same n_tok rows (2..8) in one launch, each output bitwise
++/// its own bf16_gemv_fp32_mmvf_multi call's; false = nothing launched (one row, STRATA_MMVF_ROWS): make the two calls.
++bool bf16_gemv_fp32_mmvf_multi_pair(const float* x, int64_t ldx, const uint16_t* w, float* y, int64_t ldy, int64_t n_in,
++                                    int64_t n_out, int n_tok, const uint16_t* w_aux, float* y_aux, int64_t ldy_aux,
++                                    int64_t n_aux, void* stream);
+ bool bf16_gemv_fp32_mmvf_multi_aux(const float* x, int64_t ldx, const uint16_t* w, float* y, int64_t ldy,
+                                    int64_t n_in, int64_t n_out, int n_tok, const uint16_t* w_aux, float* y_aux,
+                                    int64_t ldy_aux, void* stream);
+diff --git a/src/core/verify.cpp b/src/core/verify.cpp
+index bda666b..be2dc53 100644
+--- a/src/core/verify.cpp
++++ b/src/core/verify.cpp
+@@ -1800,7 +1800,16 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
+                     }
+                     norm_rope_on(data, norm, rows, cols, pos, ns);
+                 };
++                // rdna3-moe-tuning STRATA_QSA_IDX_PAIR=1 (opt-in): the indexer's key and query projections (both bf16, both over the
++                // mixer's input rows) in one launch, each output bitwise its own launch's; the query's norm + RoPE stay where they were
++                static const bool idx_pair_on = [] { const char* e = std::getenv("STRATA_QSA_IDX_PAIR"); return e != nullptr && e[0] == '1'; }();
++                bool idx_paired = false;
+                 auto idx_key = [&](cudaStream_t ns) {
++                    if (qb && idx_pair_on && !qbr)
++                        idx_paired = strata::kernels::bf16_gemv_fp32_mmvf_multi_pair(
++                            mixed_ + tb * N, N, (const uint16_t*) wik->data, idx_raw + tb * ID, ID, N, ID, n,
++                            (const uint16_t*) wiq->data, qidx_ + tb * IQ * ID, IQ * ID, IQ * ID, ns);
++                    if (idx_paired) return;
+                     if (qb) bf16_gemv_fp32_mmvf_multi(mixed_ + tb * N, N, (const uint16_t*) wik->data, idx_raw + tb * ID, ID, N, ID, n, ns);
+                     else for (int t = tb; t < te; ++t)
+                         bf16_gemv_fp32_mmvf(mixed_ + t * N, (const uint16_t*) wik->data, idx_raw + t * ID, (int) N, (int) ID, ns);
+@@ -1832,8 +1841,9 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
+                 };
+                 auto idx_query = [&](cudaStream_t ns) {
+                     if (qb) {
+-                        bf16_gemv_fp32_mmvf_multi(mixed_ + tb * N, N, (const uint16_t*) wiq->data, qidx_ + tb * IQ * ID, IQ * ID,
+-                                                  N, IQ * ID, n, ns);
++                        if (!idx_paired)
++                            bf16_gemv_fp32_mmvf_multi(mixed_ + tb * N, N, (const uint16_t*) wiq->data, qidx_ + tb * IQ * ID, IQ * ID,
++                                                      N, IQ * ID, n, ns);
+                         norm_rope_s(qidx_ + tb * IQ * ID, wiqn, (int) (n * IQ), (int) ID, pos_i + tb * IQ, ns);
+                     } else
+                         for (int t = tb; t < te; ++t) {
+diff --git a/src/kernels/cuda/native_bf16.cu b/src/kernels/cuda/native_bf16.cu
+index 316f760..0f2c9fe 100644
+--- a/src/kernels/cuda/native_bf16.cu
++++ b/src/kernels/cuda/native_bf16.cu
+@@ -331,6 +331,38 @@ bool bf16_gemv_fp32_mmvf_multi_aux(const float* x, int64_t ldx, const uint16_t*
+     return true;
+ }
+ 
++// rdna3-moe-tuning STRATA_QSA_IDX_PAIR: bf16_gemv_fp32_mmvf_multi(x, ldx, w, y, ldy, n_in, n_out, n_tok) and
++// bf16_gemv_fp32_mmvf_multi(x, ldx, w_aux, y_aux, ldy_aux, n_in, n_aux, n_tok) in ONE launch: the multi kernel's aux rows
++// (any number of them), every output bitwise its own launch's.  false (nothing launched) outside the multi kernel's case.
++bool bf16_gemv_fp32_mmvf_multi_pair(const float* x, int64_t ldx, const uint16_t* w, float* y, int64_t ldy, int64_t n_in,
++                                    int64_t n_out, int n_tok, const uint16_t* w_aux, float* y_aux, int64_t ldy_aux,
++                                    int64_t n_aux, void* stream) {
++    static const bool rows = [] { const char* v = std::getenv("STRATA_MMVF_ROWS"); return v && v[0] == '1'; }();
++    if (rows || n_tok < 2 || n_tok > 8 || n_in <= 0 || (n_in & 1) != 0 || n_out <= 0 || n_aux <= 0 || (ldx & 1) != 0 ||
++        x == nullptr || w == nullptr || y == nullptr || w_aux == nullptr || y_aux == nullptr ||
++        (reinterpret_cast<uintptr_t>(x) & 7u) != 0)
++        return false;
++    const cudaStream_t st = (cudaStream_t) stream;
++#define STRATA_MMVF_M(N) case N: \
++    switch (n_tok) { \
++        case 2: launch_pdl(bf16_f32_mmvf_multi_kernel<N, 2, true>, dim3((unsigned) (n_out + n_aux)), dim3(N), 0, st, x, ldx, w, y, ldy, (int) n_in, n_tok, w_aux, y_aux, ldy_aux, (int) n_out); break; \
++        case 3: launch_pdl(bf16_f32_mmvf_multi_kernel<N, 3, true>, dim3((unsigned) (n_out + n_aux)), dim3(N), 0, st, x, ldx, w, y, ldy, (int) n_in, n_tok, w_aux, y_aux, ldy_aux, (int) n_out); break; \
++        case 4: launch_pdl(bf16_f32_mmvf_multi_kernel<N, 4, true>, dim3((unsigned) (n_out + n_aux)), dim3(N), 0, st, x, ldx, w, y, ldy, (int) n_in, n_tok, w_aux, y_aux, ldy_aux, (int) n_out); break; \
++        case 5: launch_pdl(bf16_f32_mmvf_multi_kernel<N, 5, true>, dim3((unsigned) (n_out + n_aux)), dim3(N), 0, st, x, ldx, w, y, ldy, (int) n_in, n_tok, w_aux, y_aux, ldy_aux, (int) n_out); break; \
++        case 6: launch_pdl(bf16_f32_mmvf_multi_kernel<N, 6, true>, dim3((unsigned) (n_out + n_aux)), dim3(N), 0, st, x, ldx, w, y, ldy, (int) n_in, n_tok, w_aux, y_aux, ldy_aux, (int) n_out); break; \
++        default: launch_pdl(bf16_f32_mmvf_multi_kernel<N, 8, false>, dim3((unsigned) (n_out + n_aux)), dim3(N), 0, st, x, ldx, w, y, ldy, (int) n_in, n_tok, w_aux, y_aux, ldy_aux, (int) n_out); break; \
++    } break
++        switch (mmvf_block_size(n_in)) {
++            STRATA_MMVF_M(32); STRATA_MMVF_M(64); STRATA_MMVF_M(96); STRATA_MMVF_M(128);
++            STRATA_MMVF_M(160); STRATA_MMVF_M(192); STRATA_MMVF_M(224); STRATA_MMVF_M(256);
++        }
++#undef STRATA_MMVF_M
++    const cudaError_t result = cudaGetLastError();
++    if (result != cudaSuccess)
++        throw std::runtime_error(std::string("bf16_gemv_fp32_mmvf_multi_pair launch: ") + cudaGetErrorString(result));
++    return true;
++}
++
+ void bf16_gemv_fp32_mmvf_multi(const float* x, int64_t ldx, const uint16_t* w, float* y, int64_t ldy,
+                                int64_t n_in, int64_t n_out, int n_tok, void* stream) {
+     if (n_tok == 1 && ldy >= n_out) { bf16_gemv_fp32_mmvf(x, w, y, n_in, n_out, stream); return; }

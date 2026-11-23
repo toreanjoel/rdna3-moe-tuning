@@ -201,6 +201,8 @@ would need more power. Raw output: [`snapshot/2026-11-22/sweep19.txt`](snapshot/
 | Draft acceptance logged per position in the server (`STRATA_SPEC_TRACE`, [`patches/spec-cumx.patch`](patches/spec-cumx.patch), `tools/ab.sh TRACE=1`, `tools/spectrace.py`; `snapshot/2026-11-23/ab48a.txt`, `ab48b.txt`) | 2.63 tokens a round; rounds that keep no draft 25% (11% none offered, 14% offered and rejected); drafts hold 84 / 83 / 82% at positions 1–3; rows 2 / 3 / 4 of a window cost 1.1 / 2.0 / 2.9 ms | measurement |
 | Draft window by a cumulative rule: row k stays while the product of the draft probabilities ≥ tokens-per-ms × the ms that row adds (`STRATA_SPEC_CUMX=1`; `snapshot/2026-11-23/ab48c.txt`) | varied chats 133.0 / 133.0 / 132.5 → 134.9 / 133.2 / 134.6 (+1.1%, 3 of 3 rounds); 2.63 → 2.82 tokens a round | **yes** (`CUMX=0` = min-p) |
 | Wider draft vocabulary: zh60k cannot emit 5% of the tokens the model writes ("replication", "PostgreSQL"); + the 5,725 other tokens seen in its own answers and coding sessions (`tools/draft_vocab_plus.py`; `snapshot/2026-11-23/ab49.txt`) | varied chats 133.1 / 132.4 / 132.4 → 135.4 / 136.0 / 138.3 (+3.0%, 3 of 3); zh60k + every id below 100,000 (117k tokens): +1.1% | **yes** (`DVOCAB=0` = zh60k) |
+| q8_0 on only the most-used MTP experts (top 64 / 128 of 512 hold 46 / 67% of the routing weight; `tools/mtp_mix.py`, `tools/mix_ab.sh`; `snapshot/2026-11-23/mix-ab.txt`, one round) | tokens kept a round: all q4_0 2.83, all q8_0 2.83, 64 hot 2.78, 128 hot 2.81; a real mixed pack would take 150–300 MiB of VRAM from the main experts: precision isn't what limits the head | no |
+| Expert profile learned from 79 logged coding sessions (`--expert-profile-save`, `tools/profile_ab.sh`; `snapshot/2026-11-23/profile-ab.txt`, 3 rounds) | held-out sessions: VRAM hit rate 90.7 → 90.8%, tok/s within the spread; varied chats 90.3 → 89.8% hits, 136.3 → 132.7 tok/s (−2.7%, 3 of 3): the adaptive cache already gets there from the shipped profile | no |
 | Train/serve check of the draft head on the rows the server drafts from (`tools/mtp_check.py`, `STRATA_MTP_DUMP_DEC`; `snapshot/2026-11-23/mtp-check-q4.txt`) | decode-path vs prompt-path rows: same accuracy; run-time Q4_0 quantization costs 0.6–1.4 points; on unseen prompts the retrained head scores what the shipped one does (77.3%): round 1 memorised its templated prompts | round 2: `tools/mtp_round2.sh` |
 | `STRATA_HC_REQ8=1` | 114 / 107, prompts −5% | no |
 | `STRATA_COPY_HIP_PRIO=1`, `--host-core sibling` | −3% / none | no |
@@ -236,9 +238,10 @@ step); the hyper-connection read is DRAM-bound for its first ~8 µs and then a s
 speed depends on the format and on entries per expert (`tools/expbench.sh`). rocprofv3 kernel times are not
 usable inside HIP graphs on ROCm 7.2.4 (graph kernels share end timestamps).
 
-Drafting is tuned out on this model: the MTP head keeps ~2.2 tokens a step and 37% of steps accept no draft, and
-every setting that drafts more costs more verify time than it keeps on real chats. ~180 tok/s would need ~3.4 tokens
-a step at today's step time, or a much shorter step.
+Drafting on varied chats now keeps ~2.8 tokens a step of ~20.6 ms (2.2 on the fork's defaults), and 18% of steps
+accept no draft (`snapshot/2026-11-23/mix-ab.txt`, arm `q4_1`). Wider windows, a global `--spec-min-p` and a
+higher-precision head cost more verify time than they keep. ~200 tok/s would need ~4.1 tokens a step at today's step
+time, or a much shorter step.
 
 Retraining the MTP draft head on this IQ3_S model's own answers (`tools/mtp_pipeline.sh <prompts> <max tokens>`):
 `patches/mtp-dump.patch` (`STRATA_MTP_DUMP`) writes each prompt position's hidden state and next token,
