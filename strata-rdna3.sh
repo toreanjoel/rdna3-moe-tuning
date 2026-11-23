@@ -29,8 +29,9 @@ FAST=${FAST:-1}; FASTENV=""; [ "$FAST" = 1 ] && FASTENV="STRATA_ROUTE_TAIL_SKIP=
 CTX=${CTX:-131072}                                     # max context (the fork ships 262144)
 # bit-identical kernel choices (+2% decode, sweeps 10-11): the shared expert's gate+up in one GEMV, the hc read's shorter
 # serial tail, per-format expert layouts.  GR_TAIL / EXP_AUTO need patches/*.patch (./strata-rdna3.sh build); an
-# unpatched engine ignores them
-KERNENV="STRATA_RDNA_PAIR=1 STRATA_GR_TAIL=1 STRATA_EXP_AUTO=1"
+# unpatched engine ignores them.  QSA_KV_PAIR / QSA_GATE_Q8 / QSA_IDX_PAIR (patches/qsa-*.patch): attention key+value,
+# gate+quantize and the indexer's key+query each in one launch, -0.03-0.05 ms a window each, same answers (foldbench1)
+KERNENV="STRATA_RDNA_PAIR=1 STRATA_GR_TAIL=1 STRATA_EXP_AUTO=1 STRATA_QSA_KV_PAIR=1 STRATA_QSA_GATE_Q8=1 STRATA_QSA_IDX_PAIR=1"
 # MTP draft head: its 512 experts at q4_0 (data/mtp/rt-q4_0, built by `mtp4`; patches/mtp-native.patch) instead of the
 # shipped q2_0 (42% RMS error): varied chats +1.1% (sweep41). MTP=2 = the shipped head.
 MTP=${MTP:-ft}; MTPARG=""; [ "$MTP" != 2 ] && [ -s "$D/mtp/rt-q4_0/experts.txt" ] && MTPARG="--mtp $D/mtp/rt-q4_0"

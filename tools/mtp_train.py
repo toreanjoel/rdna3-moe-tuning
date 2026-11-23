@@ -244,7 +244,7 @@ def vocab_mask(a, V):
     return m
 
 @torch.no_grad()
-def evaluate(m, path, seqs, mask, steps=3):
+def evaluate(m, path, seqs, mask, steps=int(os.environ.get("MTP_EVAL_STEPS", "3"))):   # accuracy of draft steps 1..steps on the accepted path
     hit = [0] * steps; tot = [0] * steps
     for s in seqs:
         R, tn, lab, pos, lo = batch(path, s)

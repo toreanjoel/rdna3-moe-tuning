@@ -1,0 +1,69 @@
+== base_1  XENV=[STRATA_SPEC_CUMX=0]
+    8192      2793    2436   1.15     129.8  119.0   1.09
+98 windows, avg T 3.15, 2.61 tokens/window, 21.52 ms/window = verify 19.51
+96 windows, avg T 3.10, 2.67 tokens/window, 19.30 ms/window = verify 17.34
+== kv_1  XENV=[STRATA_SPEC_CUMX=0 STRATA_QSA_KV_PAIR=1]
+    8192      2797    2436   1.15     130.2  119.0   1.09
+98 windows, avg T 3.15, 2.61 tokens/window, 21.47 ms/window = verify 19.47
+96 windows, avg T 3.10, 2.67 tokens/window, 19.24 ms/window = verify 17.27
+   SAME bench/fb_kv_1/iq3-1gpu/n8192-r0.json
+   SAME bench/fb_kv_1/iq3-1gpu/n8192-r1.json
+== gq_1  XENV=[STRATA_SPEC_CUMX=0 STRATA_QSA_GATE_Q8=1]
+    8192      2801    2436   1.15     130.2  119.0   1.09
+98 windows, avg T 3.15, 2.61 tokens/window, 21.47 ms/window = verify 19.46
+96 windows, avg T 3.10, 2.67 tokens/window, 19.24 ms/window = verify 17.29
+   SAME bench/fb_gq_1/iq3-1gpu/n8192-r0.json
+   SAME bench/fb_gq_1/iq3-1gpu/n8192-r1.json
+== nr_1  XENV=[STRATA_SPEC_CUMX=0 STRATA_NORM_ROPE=1]
+    8192      2798    2436   1.15     119.6  119.0   1.01
+108 windows, avg T 3.13, 2.37 tokens/window, 20.72 ms/window = verify 18.79
+107 windows, avg T 2.99, 2.39 tokens/window, 19.16 ms/window = verify 17.26
+   DIFF bench/fb_nr_1/iq3-1gpu/n8192-r0.json
+   DIFF bench/fb_nr_1/iq3-1gpu/n8192-r1.json
+== idx_1  XENV=[STRATA_SPEC_CUMX=0 STRATA_QSA_IDX_PAIR=1]
+    8192      2797    2436   1.15     130.3  119.0   1.10
+98 windows, avg T 3.15, 2.61 tokens/window, 21.42 ms/window = verify 19.43
+96 windows, avg T 3.10, 2.67 tokens/window, 19.23 ms/window = verify 17.27
+   SAME bench/fb_idx_1/iq3-1gpu/n8192-r0.json
+   SAME bench/fb_idx_1/iq3-1gpu/n8192-r1.json
+== all_1  XENV=[STRATA_SPEC_CUMX=0 STRATA_QSA_KV_PAIR=1 STRATA_QSA_GATE_Q8=1 STRATA_NORM_ROPE=1 STRATA_QSA_IDX_PAIR=1]
+    8192      2799    2436   1.15     120.5  119.0   1.01
+108 windows, avg T 3.13, 2.37 tokens/window, 20.61 ms/window = verify 18.68
+107 windows, avg T 2.99, 2.39 tokens/window, 18.99 ms/window = verify 17.13
+   DIFF bench/fb_all_1/iq3-1gpu/n8192-r0.json
+   DIFF bench/fb_all_1/iq3-1gpu/n8192-r1.json
+== base_2  XENV=[STRATA_SPEC_CUMX=0]
+    8192      2796    2436   1.15     130.0  119.0   1.09
+98 windows, avg T 3.15, 2.61 tokens/window, 21.48 ms/window = verify 19.49
+96 windows, avg T 3.10, 2.67 tokens/window, 19.27 ms/window = verify 17.32
+== kv_2  XENV=[STRATA_SPEC_CUMX=0 STRATA_QSA_KV_PAIR=1]
+    8192      2797    2436   1.15     130.2  119.0   1.09
+98 windows, avg T 3.15, 2.61 tokens/window, 21.44 ms/window = verify 19.45
+96 windows, avg T 3.10, 2.67 tokens/window, 19.25 ms/window = verify 17.27
+   SAME bench/fb_kv_2/iq3-1gpu/n8192-r0.json
+   SAME bench/fb_kv_2/iq3-1gpu/n8192-r1.json
+== gq_2  XENV=[STRATA_SPEC_CUMX=0 STRATA_QSA_GATE_Q8=1]
+    8192      2796    2436   1.15     130.2  119.0   1.09
+98 windows, avg T 3.15, 2.61 tokens/window, 21.44 ms/window = verify 19.43
+96 windows, avg T 3.10, 2.67 tokens/window, 19.24 ms/window = verify 17.27
+   SAME bench/fb_gq_2/iq3-1gpu/n8192-r0.json
+   SAME bench/fb_gq_2/iq3-1gpu/n8192-r1.json
+== nr_2  XENV=[STRATA_SPEC_CUMX=0 STRATA_NORM_ROPE=1]
+    8192      2797    2436   1.15     119.7  119.0   1.01
+108 windows, avg T 3.13, 2.37 tokens/window, 20.73 ms/window = verify 18.80
+107 windows, avg T 2.99, 2.39 tokens/window, 19.13 ms/window = verify 17.25
+   DIFF bench/fb_nr_2/iq3-1gpu/n8192-r0.json
+   DIFF bench/fb_nr_2/iq3-1gpu/n8192-r1.json
+== idx_2  XENV=[STRATA_SPEC_CUMX=0 STRATA_QSA_IDX_PAIR=1]
+    8192      2796    2436   1.15     130.3  119.0   1.09
+98 windows, avg T 3.15, 2.61 tokens/window, 21.45 ms/window = verify 19.46
+96 windows, avg T 3.10, 2.67 tokens/window, 19.21 ms/window = verify 17.26
+   SAME bench/fb_idx_2/iq3-1gpu/n8192-r0.json
+   SAME bench/fb_idx_2/iq3-1gpu/n8192-r1.json
+== all_2  XENV=[STRATA_SPEC_CUMX=0 STRATA_QSA_KV_PAIR=1 STRATA_QSA_GATE_Q8=1 STRATA_NORM_ROPE=1 STRATA_QSA_IDX_PAIR=1]
+    8192      2802    2436   1.15     120.5  119.0   1.01
+108 windows, avg T 3.13, 2.37 tokens/window, 20.61 ms/window = verify 18.67
+107 windows, avg T 2.99, 2.39 tokens/window, 18.98 ms/window = verify 17.13
+   DIFF bench/fb_all_2/iq3-1gpu/n8192-r0.json
+   DIFF bench/fb_all_2/iq3-1gpu/n8192-r1.json
+foldbench done

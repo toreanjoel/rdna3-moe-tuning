@@ -352,3 +352,13 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
   rdna_mmvq_pair launch) -0.02..-0.07 ms a window, answers identical; STRATA_QSA_GATE_Q8 (attention gate + q8_1 quantize, two
   elementwise kernels of one thread shape, in one launch) -0.03..-0.09 ms, answers identical. foldbench.sh (fixed 8K prompt)
   and qcheck.sh are the tools for these.
+  foldbench1 (fixed 8K prompt, 2 rounds x 2 repeats, verify ms a window; snapshot/2026-11-23/foldbench1.txt): base 19.51 / 17.34,
+  19.49 / 17.32; KV_PAIR 19.47 / 17.27, 19.45 / 17.27; GATE_Q8 19.46 / 17.29, 19.43 / 17.27; STRATA_QSA_IDX_PAIR (indexer key
+  + query in one launch) 19.43 / 17.27, 19.46 / 17.26: each -0.03..-0.06 ms, answers byte-identical. All three now default on
+  (KERNENV). STRATA_NORM_ROPE=1: 17.25 (-0.07 ms) but NOT bitwise: top-1 94.87% vs base, KL 0.0245 (qc-folds.txt; about half
+  of FAST's drift) and the bench answer changes. Left off: 0.4% is not worth a second source of drift.
+- Focus from here (user, 2026-11-24): tokens kept a step, ~4.1 for ~200 tok/s. --spec 4 caps a step at 4.0 and 41% of
+  rounds already accept all 3 drafts (mix-ab q4_1: 338 / 815), so windows must go past 4 rows where the cumulative rule
+  says the row pays (tools/wide_ab.sh: --spec 6 / 8 with CUMX, row ms 1.1,2.0,2.9,3.6) and the head must hold up at draft
+  steps 4+ (tools/mtp_deep.sh: chain 4, scored to step 6). Rows are not free: 1 / 2 / 3 / 4 rows = 14.95 / 16.04 / 18.04 /
+  20.93 ms, so the measure is tokens per ms; 0.2 tok/ms at 8 rows (~35 ms) would need ~7 of 8 kept.

@@ -1,0 +1,9 @@
+== all [STRATA_QSA_KV_PAIR=1 STRATA_QSA_GATE_Q8=1 STRATA_NORM_ROPE=1 STRATA_QSA_IDX_PAIR=1] vs base
+reference: /home/bonfire/work/rdna3/bench/qc-folds/base.tsv
+run                                      segment         pos    top1       KL   KL p99     PPL PPL ref
+all.tsv                                  all            4995  94.87%  0.02451   0.3383   4.032   4.084
+== nr [STRATA_NORM_ROPE=1] vs base
+reference: /home/bonfire/work/rdna3/bench/qc-folds/base.tsv
+run                                      segment         pos    top1       KL   KL p99     PPL PPL ref
+nr.tsv                                   all            4995  94.87%  0.02451   0.3383   4.032   4.084
+qcheck done
