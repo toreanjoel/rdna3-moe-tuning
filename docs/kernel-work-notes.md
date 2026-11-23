@@ -278,3 +278,58 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
 - 2026-11-23 sweep45/46 (retrained head): --spec 5 wins varied chats 136.8 -> 137.3 (3/3 rounds) but loses the bench
   (8K 129.6 -> 121.0, 32K 122.7 -> 119.5): dropped. --spec-min-p 0.4 = base. Bench now 129.6 / 122.7 (8K / 32K) with
   q4_0 + hnorm stream + ft head, vs 117.7 / 117.4 before the MTP work (+10% / +4.5%). Perf mode not re-run.
+
+## Draft acceptance, measured per position 2026-11-23 (patches/spec-cumx.patch, spec-dump.patch; tools/ab.sh, spectrace.py, mtp_check.py)
+- Box crashed during sweep47 (21:45, amdgpu soft lockup in a vblank irq, rebooted itself). After the reboot the same chats read
+  ~133.0 instead of ~137 (clocks, cap, EPP verified as before): all numbers below are relative to that 133.0 base.
+- STRATA_SPEC_TRACE now also works in the server (it was CLI-only, which is why sweep47's trace file never appeared): one line a
+  round, "T a sfx ms thr p1 .. pn". tools/ab.sh = arms x rounds on the chat prompts (TRACE=1, TIMING=1, HITS=1, SESS=file).
+- Default config (MTP=ft HNORM=1 FAST=1 --spec 4 --spec-min-p 0.5), 876 rounds: 2.634 tokens a round, 19.85 ms a round.
+  Zero-accept rounds are 25.1% now, not 37% (that was the shipped q2 head, pooled norm): 11.0% no draft offered (p1 < 0.5),
+  14.2% offered and rejected. Per draft position (offered / accepted of those reached): 1: 780 / 84.1%, 2: 643 / 83.0%,
+  3: 522 / 81.8%. The head's probability is over-confident below 0.9: p 0.5-0.6 holds 37%, 0.6-0.7 48%, 0.7-0.8 59%,
+  0.8-0.9 79%, 0.9-1.0 95%. 352 of 876 chains were cut at a draft below 0.5.
+- With every draft offered (CUMX run) the live step-1 acceptance is 80.6% and zero-accept 19.5%, 2.82 tokens a round: the offline
+  81.9 / 76.2 / 72.3% (18% zero-accept, 2.89 tokens) is what the server gets. No hidden drafting bug.
+- --spec-min-p is PER DRAFT (generate.cpp serial loop: T grows while dprob[T-1] >= min_p; the drafter stops its chain at the
+  first draft below it, mtp.cpp). The fork has an opt-in fixed cumulative floor (STRATA_SPEC_CUM=S, beside min-p) and an online
+  cost policy (STRATA_SPEC_COST=1, sweep47: 136.6 / 137.2 base vs 137.1, level).
+- Round ms by window rows (median, no profiling; verify + commit + next draft): 1: 14.95, 2: 16.04, 3: 18.04, 4: 20.93 ->
+  rows 2 / 3 / 4 add 1.1 / 2.0 / 2.9 ms (with DECODE_TIMING + VERIFY_PROFILE: 18.33 / 19.44 / 21.16 / 24.05). Each row routes up
+  to 10 more experts a layer, so the cost a row grows.
+- STRATA_SPEC_CUMX=1 (new, own switch): draft row k stays while prod(p_1..p_k) >= (tokens per ms, decayed) x (ms row k adds,
+  STRATA_SPEC_CUMX_ROW_MS=1.1,2.0,2.9); thresholds come out at 0.15 / 0.27 / 0.39. =2 uses the measured acceptance of that
+  probability instead of the raw one. ab48c (3 rounds): base 133.0 / 133.0 / 132.5, CUMX=1 134.9 / 133.2 / 134.6 (+1.1%, 3 of 3),
+  CUMX=2 133.6 / 133.4 / 136.5 (+1.2%, noisier: it learns its calibration online). Tokens a round 2.63 -> 2.82, ms 19.85 -> 21.1.
+  Default now CUMX=1.
+- Train/serve mismatches (tools/mtp_check.py: the torch head on the rows the server really drafts from, STRATA_MTP_DUMP_DEC):
+  1. FAST=1: the answers were generated with it, but the rows the head trained on came from the prompt path, which has no tail
+     skip. Measured on 12 chats (4,616 tokens): decode rows vs prompt-path rows of the same text differ 7.5% (cosine 0.996), and
+     the head scores the same on both (77.3 / 70.0 / 64.7 vs 77.5 / 70.3 / 65.2). Not a loss.
+  2. Quantization: the server reads the Q8_0 projections as Q4_0 (--mtp-q4 all), q4_0 experts and a Q4_0 head; torch trained in
+     float. Float torch picks the server's first draft 91.3% of the time, with all three quantized 94.6% (|dp| 0.053 -> 0.032).
+     Cost of the quantization: 77.3 / 70.0 / 64.7 -> 76.7 / 69.0 / 63.3. --mtp-hnorm stream matches by construction.
+     mtp_train.py --qat trains through it (straight-through Q4_0).
+  3. Vocabulary: training masked to zh60k and the server drafts from zh60k (all 1,943 first drafts inside it): consistent.
+     But zh60k cannot emit 4.97% of the tokens the model wrote (ordinary words with ids 25k-100k: "replication", "congestion",
+     "PostgreSQL"); every shipped subset (en 40k, rt 106k) misses the same ones.
+- The real problem found by the check: on prompts outside its training set the retrained head is NO better than the shipped one
+  (77.3 / 70.0 / 64.7 vs 77.3 / 69.8 / 65.7). Round 1's 1,553 prompts were templates (6 code frames x 10 languages x 30 tasks ...),
+  its eval set near-duplicates of them: 75.5 -> 81.9% was memorised answers. Round 2 = tools/mtp_round2.sh (self-instruct
+  prompts, coding-session continuations, sampled + greedy, thinking on / off, QAT, held-out evals on other prompts / sessions).
+- Draft vocabulary (ab49, 3 rounds, tools/draft_vocab_plus.py): every shipped subset holds ids 0-24,999 and a thin pick above;
+  the model's ordinary English / code tokens with ids 25k-100k are missing (coverage of the tokens it wrote: check chats 95.05%,
+  round-1 training text 96.97%, coding sessions 97.40%). zh60k + the tokens seen in its own round-1 answers + the coding
+  sessions' assistant turns = 65,332 ids (tools/draft_vocab_plus.bin): held-out coverage 98.66% (chats) / 99.45% (sessions).
+  Varied chats: base 133.1 / 132.4 / 132.4, plus (65k) 135.4 / 136.0 / 138.3 (+3.0%, tokens a round 2.63-2.67 -> 2.70-2.77),
+  zh60k + every id < 100,000 (117k ids, 99.9% coverage) 133.9 / 134.6 / 133.8 (+1.1%: the head read doubles). Default now
+  DVOCAB=1 (the 65k file; no retraining needed: the draft head is rows of the main head). The next retrain should mask to it.
+- Answer text is not a quality check for draft-side switches: two runs of the SAME config can differ after the first few
+  tokens (base_1 vs base_2: 0 of 6 answers identical; base_2 = base_3) because the windows differ (FAST's tail skip depends on
+  the window), and CUMX makes the windows depend on timing. Draft switches only choose which rows are verified; the teacher-
+  forced check (tools/qcheck.sh = quant_quality.py) does not run the drafter at all. Kernel switches: qcheck.sh.
+- ab50 (2 rounds, DECODE_TIMING on): old defaults 133.0 / 132.5, new (CUMX=1 + DVOCAB=1) 138.7 / 138.7 = +4.5%: the two stack.
+  VRAM expert hit rate on these chats 90.5% (27.5-29.9 hits, 2.9-3.3 CPU entries a layer-window).
+  STRATA_FUSE_HITS=1 (gfx12 default: moe_hit_add folded into the combine): 136.6 / 136.5 vs 137.8 / 136.7, 20.85 vs 20.6 ms a
+  window: slower on gfx1100, dropped. With CUMX on, two runs of one config can pick different windows (the rule reads the
+  measured tokens per ms), so kernel folds are A/B'd with STRATA_SPEC_CUMX=0 (identical windows -> compare ms a window).

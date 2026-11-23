@@ -1,0 +1,125 @@
+diff --git a/src/program/generate.cpp b/src/program/generate.cpp
+index abe4c53..b84cf44 100644
+--- a/src/program/generate.cpp
++++ b/src/program/generate.cpp
+@@ -12213,6 +12213,45 @@ int main(int argc, char** argv) {
+                 chain_rows = chain_st.best_rows;
+                 return k;
+             });
++        // [rdna3-moe-tuning] STRATA_SPEC_CUMX=1 (opt-in, serve; unset or 0 = off): the MTP window by a marginal rule.  Draft row k
++        // stays only while the product of the draft layer's probabilities up to k (the chance that every draft so far holds)
++        // is at least (tokens per ms now) x (the ms that row adds to a round); it replaces --spec-min-p's per-draft floor.
++        // =2: the product of the measured acceptance of drafts of that probability (DraftPolicy::draft_rate) instead.
++        // STRATA_SPEC_CUMX_ROW_MS="r2,r3,r4": the ms that rows 2, 3, 4 add (default 1.3 each; a short list repeats its last);
++        // STRATA_SPEC_CUMX_SCALE=x multiplies the threshold.  It only chooses which drafts are verified: the output is unchanged.
++        // STRATA_SPEC_TRACE=<file> (serve, appended): one line per timed round, "T a sfx ms thr p1 .. pn" (window rows, drafts
++        // accepted, lookup window, round ms, the CUMX threshold of row 2 or 0, the probabilities of the n drafts the chain made).
++        const int spec_cumx = [] { const char* v = std::getenv("STRATA_SPEC_CUMX"); return v != nullptr ? std::atoi(v) : 0; }();
++        std::array<double, 8> cumx_row_ms;
++        cumx_row_ms.fill(1.3);
++        if (const char* rm = std::getenv("STRATA_SPEC_CUMX_ROW_MS"); rm != nullptr && rm[0] != '\0') {
++            size_t i = 0;
++            for (const char* q = rm; *q != '\0' && i < cumx_row_ms.size();) {
++                const double v = std::atof(q);
++                for (size_t j = i; j < cumx_row_ms.size(); ++j) cumx_row_ms[j] = v;
++                ++i;
++                while (*q != '\0' && *q != ',') ++q;
++                if (*q == ',') ++q;
++            }
++        }
++        const double cumx_scale = [] { const char* v = std::getenv("STRATA_SPEC_CUMX_SCALE"); return v != nullptr && std::atof(v) > 0.0 ? std::atof(v) : 1.0; }();
++        double cumx_tok = 0.0, cumx_ms = 0.0, cumx_cum = 1.0, cumx_thr = 0.0;   // decayed tokens / ms of the timed rounds
++        int cumx_rows = 1;                                                       // the window the rule kept in the chain just drafted
++        if (spec_cumx > 0 && use_mtp && !spec_cost)
++            mtp.set_chain_rule([&](int idx, float pj) {
++                if (idx == 0) { cumx_cum = 1.0; cumx_rows = 1; }
++                if (cumx_rows != idx + 1) return false;
++                cumx_cum *= spec_cumx == 2 ? policy.draft_rate((double) pj) : (double) pj;
++                const double rate = cumx_ms > 20.0 ? cumx_tok / cumx_ms : 0.13;
++                const double thr = rate * cumx_row_ms[(size_t) std::min(idx, 7)] * cumx_scale;
++                if (idx == 0) cumx_thr = thr;
++                if (cumx_cum < thr) return false;
++                cumx_rows = idx + 2;
++                return true;
++            });
++        std::FILE* spec_trace_s = nullptr;
++        if (const char* tf = std::getenv("STRATA_SPEC_TRACE"); tf != nullptr && tf[0] != '\0') spec_trace_s = std::fopen(tf, "a");
++        int dn_next = 0, dn_s = 0;   // the drafts the chain made for the next / the current window
+         // The vision path (--vision): GENI <max_new> <embeddings file> <id,id,...> carries images.  The file is one
+         // or more strata-vision records (int32 'SVE1', n, nx, ny, n_embd, then n x n_embd floats) in prompt order;
+         // each image's rows go to its run of <|image_pad|> tokens, whose M-RoPE positions are mtmd's: t = p,
+@@ -16371,6 +16410,8 @@ int main(int argc, char** argv) {
+                 policy.set_context(p);
+                 if (use_mtp && spec_cost && !first_window) {
+                     T = std::clamp(chain_rows, 1, S_mtp);
++                } else if (use_mtp && spec_cumx > 0 && !first_window) {
++                    T = std::clamp(cumx_rows, 1, S_mtp);
+                 } else if (use_mtp && req_spec_min_p > 0.0) {
+                     T = 1;
+                     double cum = 1.0;
+@@ -16382,6 +16423,7 @@ int main(int argc, char** argv) {
+                 }
+                 if (first_window) T = merge_T > 0 ? merge_T : 1;
+                 std::copy(dprob.begin(), dprob.begin() + (std::ptrdiff_t) std::min<size_t>(dprob.size(), 8), dwin_s.begin());
++                dn_s = first_window ? 0 : std::min(dn_next, 8);
+                 const bool merged = first_window && merge_T > 0;   // the prompt's last tokens and the first token
+                 // a repeat of earlier context (prompt lookup) where the MTP's own first guess agrees: the policy takes it
+                 // when its expected tokens per ms, from the measured acceptance and window costs, beat the MTP window's
+@@ -16745,7 +16787,7 @@ int main(int argc, char** argv) {
+                     mtp.set_draft_history(consumed.data(), (int64_t) consumed.size(), outv[(size_t) a]);
+                 const bool draft_now = use_mtp && !eos && produced_n < max_new;
+                 const bool drafted = !draft_now ||
+-                                     mtp.draft(T, outv.data(), p, a, drafts.data(), err, dprob.data(), (float) req_spec_min_p, nullptr,
++                                     mtp.draft(T, outv.data(), p, a, drafts.data(), err, dprob.data(), (float) req_spec_min_p, &dn_next,
+                                                commit_split && !tp_commit_thread ? &commit0 : nullptr);
+                 if (commit_split) {
+                     if (!draft_now && !tp_commit_thread) commit0();   // no draft ran: card 0's commit now
+@@ -16782,7 +16824,47 @@ int main(int argc, char** argv) {
+                     std::printf("ERR %s\n", err.c_str());
+                     return 1;
+                 }
+-                if (spec_cost && use_mtp && timed_round && !from_sfx) policy.observe_probs(dwin_s.data(), T_mtp - 1, a);
++                // [rdna3-moe-tuning] STRATA_MTP_DUMP_DEC=<file> (off = nothing): the decode path's rows for the MTP head, one record a
++                // round: "MTPV", int64 p, T, a, n; int32 x (the token at cell p), a + 1 int32 outputs (the tokens at p+1 .. p+a+1),
++                // n int32 drafts + n float probabilities of the chain just drafted from row a, (a + 1) x hc*n_embd bf16 final
++                // residual rows.  With STRATA_MTP_DUMP (the prompt path's rows) it shows what the head reads while serving.
++                static FILE* mtp_dump_dec = [] { const char* f = std::getenv("STRATA_MTP_DUMP_DEC"); return f ? std::fopen(f, "ab") : nullptr; }();
++                if (mtp_dump_dec != nullptr && use_mtp && !merged && drafted) {
++                    const int64_t hcn = g.hc * g.n_embd;
++                    const int n_d = draft_now ? std::clamp(dn_next, 0, (int) drafts.size()) : 0;
++                    std::vector<float> rf((size_t) ((a + 1) * hcn));
++                    cudaDeviceSynchronize();
++                    if (cudaMemcpy(rf.data(), ver.final_R_all(), rf.size() * sizeof(float), cudaMemcpyDeviceToHost) == cudaSuccess) {
++                        std::vector<uint16_t> rb(rf.size());
++                        for (size_t i = 0; i < rf.size(); ++i) {
++                            uint32_t u; std::memcpy(&u, &rf[i], 4);
++                            rb[i] = (uint16_t) ((u + 0x7FFFu + ((u >> 16) & 1u)) >> 16);
++                        }
++                        const int64_t hdr[4] = {(int64_t) p, (int64_t) T, (int64_t) a, (int64_t) n_d};
++                        std::fwrite("MTPV", 1, 4, mtp_dump_dec);
++                        std::fwrite(hdr, sizeof(int64_t), 4, mtp_dump_dec);
++                        std::fwrite(&x, 4, 1, mtp_dump_dec);
++                        std::fwrite(outv.data(), 4, (size_t) a + 1, mtp_dump_dec);
++                        std::fwrite(drafts.data(), 4, (size_t) n_d, mtp_dump_dec);
++                        std::fwrite(dprob.data(), 4, (size_t) n_d, mtp_dump_dec);
++                        std::fwrite(rb.data(), 2, rb.size(), mtp_dump_dec);
++                        std::fflush(mtp_dump_dec);
++                    }
++                }
++                if ((spec_cost || spec_cumx == 2) && use_mtp && timed_round && !from_sfx) policy.observe_probs(dwin_s.data(), T_mtp - 1, a);
++                if (timed_round && !eos && (spec_cumx > 0 || spec_trace_s != nullptr)) {
++                    const double rms = std::chrono::duration<double, std::milli>(Clock::now() - round0).count();
++                    if (rms < 200.0) {   // not a graph capture or a stall
++                        cumx_tok = cumx_tok * 0.98 + (double) (a + 1);
++                        cumx_ms = cumx_ms * 0.98 + rms;
++                    }
++                    if (spec_trace_s != nullptr) {
++                        std::fprintf(spec_trace_s, "%d %d %d %.3f %.4f", T, a, from_sfx ? 1 : 0, rms, spec_cumx > 0 ? cumx_thr : 0.0);
++                        for (int i = 0; i < dn_s; ++i) std::fprintf(spec_trace_s, " %.4f", (double) dwin_s[(size_t) i]);
++                        std::fprintf(spec_trace_s, "\n");
++                        std::fflush(spec_trace_s);
++                    }
++                }
+                 if (timed_round && !eos && chain_n == 0)
+                     policy.observe(from_sfx, T, a, sfx_match,
+                                    std::chrono::duration<double, std::milli>(Clock::now() - round0).count());

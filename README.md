@@ -140,6 +140,8 @@ Defaults are the measured best within the card's limits. Override any of them pe
 | `MCLK` | 1400 | VRAM clock (MHz); +2.5% over 1300 and stable, 1500 crashes the box |
 | `MTP` | ft | draft head: ft = retrained on this model (`data/mtp/rt-ft`, falls back to q4_0 if not built), 4 = q4_0 experts (built by `mtp4`), 2 = the shipped q2_0 |
 | `HNORM` | 1 | draft layer normalizes each hyper-connection stream on its own (`--mtp-hnorm stream`, +4.3%); 0 = the fork's pooled norm |
+| `DVOCAB` | 1 | draft vocabulary = the fork's zh60k subset + 5,725 tokens this model writes that the subset lacks (`tools/draft_vocab_plus.bin`, +3.0%); 0 = zh60k |
+| `CUMX` | 1 | draft window by cumulative draft probability against the measured cost of each extra row (`patches/spec-cumx.patch`, +1.1%); 0 = `--spec-min-p 0.5` per draft |
 | `VO` | -50 | core voltage offset (mV) |
 | `EPP` / `BOOST` | performance / 1 | the CPU computes the experts not cached in VRAM |
 | `TABLE` | hipBLASLt `100202` | matches ROCm 7.2.x: prompts +8% |
@@ -196,6 +198,10 @@ would need more power. Raw output: [`snapshot/2026-11-22/sweep19.txt`](snapshot/
 | English-only draft vocabulary (`--mtp-draft-vocab data/draft_vocab_en.bin`) / the full vocabulary (`STRATA_MTP_FULL_HEAD=1`) | +2.6% alone, +0.2% on top of hnorm / −3.9% | no (non-English drafts would lose) / no |
 | MTP draft layer retrained on this model's greedy answers (`tools/mtp_train.py`, 1,500 prompts, 2,000 steps; `logs/sweep44.txt`; 2026-11-23) | held-out draft top-1 75.5 → 81.9% (step 1); varied chats 136.3 → 137.2 (+0.7%, 136.1/136.7/136.2 vs 137.1/137.1/137.5) | **yes** (`MTP=ft`, default once built) |
 | `--spec 5` / `--spec-min-p 0.4` with the retrained head (`logs/sweep45.txt`, `sweep46.txt`; 2026-11-23) | varied chats 136.8 → 137.3 / 136.8 (3 rounds); bench 8K 129.6 → 121.0, 32K 122.7 → 119.5 (2 rounds each) | no |
+| Draft acceptance logged per position in the server (`STRATA_SPEC_TRACE`, [`patches/spec-cumx.patch`](patches/spec-cumx.patch), `tools/ab.sh TRACE=1`, `tools/spectrace.py`; `snapshot/2026-11-23/ab48a.txt`, `ab48b.txt`) | 2.63 tokens a round; rounds that keep no draft 25% (11% none offered, 14% offered and rejected); drafts hold 84 / 83 / 82% at positions 1–3; rows 2 / 3 / 4 of a window cost 1.1 / 2.0 / 2.9 ms | measurement |
+| Draft window by a cumulative rule: row k stays while the product of the draft probabilities ≥ tokens-per-ms × the ms that row adds (`STRATA_SPEC_CUMX=1`; `snapshot/2026-11-23/ab48c.txt`) | varied chats 133.0 / 133.0 / 132.5 → 134.9 / 133.2 / 134.6 (+1.1%, 3 of 3 rounds); 2.63 → 2.82 tokens a round | **yes** (`CUMX=0` = min-p) |
+| Wider draft vocabulary: zh60k cannot emit 5% of the tokens the model writes ("replication", "PostgreSQL"); + the 5,725 other tokens seen in its own answers and coding sessions (`tools/draft_vocab_plus.py`; `snapshot/2026-11-23/ab49.txt`) | varied chats 133.1 / 132.4 / 132.4 → 135.4 / 136.0 / 138.3 (+3.0%, 3 of 3); zh60k + every id below 100,000 (117k tokens): +1.1% | **yes** (`DVOCAB=0` = zh60k) |
+| Train/serve check of the draft head on the rows the server drafts from (`tools/mtp_check.py`, `STRATA_MTP_DUMP_DEC`; `snapshot/2026-11-23/mtp-check-q4.txt`) | decode-path vs prompt-path rows: same accuracy; run-time Q4_0 quantization costs 0.6–1.4 points; on unseen prompts the retrained head scores what the shipped one does (77.3%): round 1 memorised its templated prompts | round 2: `tools/mtp_round2.sh` |
 | `STRATA_HC_REQ8=1` | 114 / 107, prompts −5% | no |
 | `STRATA_COPY_HIP_PRIO=1`, `--host-core sibling` | −3% / none | no |
 | higher core clock (no SCLK cap) | ~+1 tok/s, coil whine | no |
@@ -257,6 +263,8 @@ power, and 47 GB of reserved huge pages (transparent huge pages already back ~52
 | [`docs/history-stock-strata.md`](docs/history-stock-strata.md) | the stock-Strata investigation (clocks, power, decode ladder) |
 | [`docs/kernel-work-notes.md`](docs/kernel-work-notes.md) | running kernel-work log: measurements, decisions, what was dropped and why, box quirks |
 | `tools/plots.py` | draws the charts in `docs/img/` from the measured numbers in the script |
-| `tools/mtp_*.py`, `tools/mtp_pipeline.sh` | MTP draft-head retraining: data, training, export |
+| `tools/mtp_*.py`, `tools/mtp_pipeline.sh`, `tools/mtp_round2.sh` | MTP draft-head retraining: data, training (`--qat`), export; `mtp_check.py` compares the torch head with what the server drafts |
+| `tools/ab.sh`, `tools/spectrace.py`, `tools/hitrate.py`, `tools/qcheck.sh` | A/B arms on the chat prompts or session replays, per-position draft statistics, VRAM expert hit rate, teacher-forced quality check of a switch |
+| `tools/sessions.py`, `tools/sessbench.py`, `tools/profile_ab.sh` | replay requests built from logged coding sessions (kept out of git), their benchmark, the expert-profile test |
 | `tools/sync-box.sh` | copy this repo's script, patches and tools to a remote box (`tools/sync-box.sh user@host`) so its `serve` runs the latest |
 | `tools/strata-oc` | optional root helper for clocks/power (install steps in its header; caps power at 294 W) |

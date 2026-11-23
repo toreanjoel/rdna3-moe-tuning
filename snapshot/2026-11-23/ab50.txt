@@ -1,0 +1,31 @@
+== old_1  XENV=[STRATA_SPEC_CUMX=0 STRATA_QSA_KV_PAIR=0] XARGS=[--mtp-draft-vocab /home/bonfire/work/rdna3/engine/rdna3/draft_vocab_zh60k.bin]
+mean 133.0 tok/s over 6 requests
+   882 windows: VRAM hit rate 90.54% (27.54 hits, 2.88 CPU entries a layer-window), 3.22 rows, 2.61 tokens, 19.82 ms a window
+== new_1  XENV=[STRATA_QSA_KV_PAIR=0] XARGS=[]
+mean 138.7 tok/s over 6 requests
+   814 windows: VRAM hit rate 90.59% (29.94 hits, 3.11 CPU entries a layer-window), 3.49 rows, 2.83 tokens, 20.59 ms a window
+== kv_1  XENV=[] XARGS=[]
+mean 137.8 tok/s over 6 requests
+   832 windows: VRAM hit rate 91.00% (29.81 hits, 2.95 CPU entries a layer-window), 3.46 rows, 2.77 tokens, 20.32 ms a window
+== nr_1  XENV=[STRATA_NORM_ROPE=1] XARGS=[]
+mean 138.6 tok/s over 6 requests
+   817 windows: VRAM hit rate 90.11% (29.95 hits, 3.29 CPU entries a layer-window), 3.51 rows, 2.82 tokens, 20.57 ms a window
+== hits_1  XENV=[STRATA_FUSE_HITS=1] XARGS=[]
+mean 136.6 tok/s over 6 requests
+   817 windows: VRAM hit rate 90.16% (30.10 hits, 3.29 CPU entries a layer-window), 3.53 rows, 2.82 tokens, 20.85 ms a window
+== old_2  XENV=[STRATA_SPEC_CUMX=0 STRATA_QSA_KV_PAIR=0] XARGS=[--mtp-draft-vocab /home/bonfire/work/rdna3/engine/rdna3/draft_vocab_zh60k.bin]
+mean 132.5 tok/s over 6 requests
+   870 windows: VRAM hit rate 89.75% (27.47 hits, 3.14 CPU entries a layer-window), 3.25 rows, 2.65 tokens, 20.20 ms a window
+== new_2  XENV=[STRATA_QSA_KV_PAIR=0] XARGS=[]
+mean 138.7 tok/s over 6 requests
+   814 windows: VRAM hit rate 90.59% (29.94 hits, 3.11 CPU entries a layer-window), 3.49 rows, 2.83 tokens, 20.59 ms a window
+== kv_2  XENV=[] XARGS=[]
+mean 136.7 tok/s over 6 requests
+   815 windows: VRAM hit rate 89.95% (29.84 hits, 3.33 CPU entries a layer-window), 3.51 rows, 2.83 tokens, 20.86 ms a window
+== nr_2  XENV=[STRATA_NORM_ROPE=1] XARGS=[]
+mean 138.6 tok/s over 6 requests
+   806 windows: VRAM hit rate 89.90% (29.82 hits, 3.35 CPU entries a layer-window), 3.51 rows, 2.86 tokens, 20.75 ms a window
+== hits_2  XENV=[STRATA_FUSE_HITS=1] XARGS=[]
+mean 136.5 tok/s over 6 requests
+   815 windows: VRAM hit rate 89.95% (29.84 hits, 3.33 CPU entries a layer-window), 3.51 rows, 2.83 tokens, 20.88 ms a window
+ab done

@@ -1,0 +1,96 @@
+diff --git a/include/strata/kernels/native_mmvq.hpp b/include/strata/kernels/native_mmvq.hpp
+index 08f7042..23c3fec 100644
+--- a/include/strata/kernels/native_mmvq.hpp
++++ b/include/strata/kernels/native_mmvq.hpp
+@@ -47,6 +47,11 @@ void native_quantize_q8_1(const float* x, void* x_q8_1, int n_in, int ncols,
+ void native_swiglu_quantize_q8_1(const float* gate, const float* up, void* x_q8_1,
+                                  int n_in, int ncols, void* stream);
+ 
++/// rdna3-moe-tuning STRATA_QSA_GATE_Q8: the QSA attention gate (native_qsa_gate_apply: attn * sigmoid of the gate half of the
++/// `rows` q|gate rows of 2 * head_dim) and native_quantize_q8_1 of its output in one launch; bitwise the pair's q8_1 blocks.
++void native_qsa_gate_quantize_q8_1(const float* attn, const float* q_full, void* x_q8_1, int rows, int head_dim,
++                                   void* stream);
++
+ void native_q5_k_mmvq(const void* weights, const void* x_q8_1, float* y,
+                       int n_in, int n_out, int ncols, void* stream);
+ 
+diff --git a/src/core/verify.cpp b/src/core/verify.cpp
+index d5de953..bda666b 100644
+--- a/src/core/verify.cpp
++++ b/src/core/verify.cpp
+@@ -2093,6 +2093,15 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
+                 }
+                 stamp(l, 13, grp);
+                 if (st.kv_rot || st.kv_hybrid) fwht256_inplace_cuda(attn_ + tb * NH * HD, (int64_t) n * NH, cs);   // back: H^-1 = H
++                // rdna3-moe-tuning STRATA_QSA_GATE_Q8=1 (opt-in): the gate and the q8_1 quantization of its output in
++                // one launch (two elementwise kernels of one thread shape; bitwise the pair's q8_1 blocks, attn32_ is not written)
++                static const bool gate_q8_on = [] { const char* e = std::getenv("STRATA_QSA_GATE_Q8"); return e != nullptr && e[0] == '1'; }();
++                if (gate_q8_on && native_qsa_enabled() && HD % 32 == 0) {
++                    strata::kernels::native_qsa_gate_quantize_q8_1(attn_ + tb * NH * HD, qfull_ + tb * NH * 2 * HD, xq_,
++                                                                   (int) (n * NH), (int) HD, cs);
++                    il_ready = false;
++                    stamp(l, 14, grp);
++                } else {
+                 if (qb) native_qsa_gate_apply(attn_ + tb * NH * HD, qfull_ + tb * NH * 2 * HD, attn32_ + tb * NH * HD,
+                                               (int) (n * NH), (int) HD, cs);
+                 else
+@@ -2105,6 +2114,7 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
+                 }
+                 stamp(l, 14, grp);
+                 quant_in(attn32_ + tb * NH * HD, (int) (NH * HD));
++                }
+                 mm(wo, bo_ + tb * N, (int) (NH * HD), (int) N);
+                 if (tp_) tp_xchg(bo_ + tb * N, (int64_t) n * N, 0);   // TP: the half-width partial sums added
+             }
+diff --git a/src/kernels/cuda/native_mmvq.cu b/src/kernels/cuda/native_mmvq.cu
+index 303da52..7bb7cad 100644
+--- a/src/kernels/cuda/native_mmvq.cu
++++ b/src/kernels/cuda/native_mmvq.cu
+@@ -185,6 +185,26 @@ __global__ void native_swiglu_quantize_q8_1_kernel(const float* __restrict__ gat
+     if (i % Q8K == 0) y[i / Q8K].ds = q8_1_ds(d, sum);
+ }
+ 
++// rdna3-moe-tuning STRATA_QSA_GATE_Q8: native_qsa.cu's gate (attn * sigmoid of the gate half of the q|gate rows) and
++// native_quantize_q8_1_kernel in one launch - both are one thread an element in blocks of QUANT_THREADS, and the
++// expressions are theirs (the product rounded before the block sum, as when it was read back from memory): the same bits
++__launch_bounds__(QUANT_THREADS, 1)
++__global__ void native_qsa_gate_quantize_q8_1_kernel(const float* __restrict__ attn, const float* __restrict__ q_full,
++                                                     Q81Block* __restrict__ y, int n_total, int head_dim) {
++    const int i = int(blockIdx.x) * QUANT_THREADS + int(threadIdx.x);
++    if (i >= n_total) return; // n_total is a multiple of 32: only whole warps return.
++    const std::size_t head = std::size_t(i) / head_dim, channel = std::size_t(i) % head_dim;
++    const float raw = q_full[head * 2 * head_dim + head_dim + channel];
++    const float sigmoid = 1.0f / (1.0f + expf(-raw));
++    const float xi = __fmul_rn(attn[i], sigmoid);
++    const float amax = warp_max(fabsf(xi));
++    const float sum = warp_sum(xi);
++    const float d = q8_1_finite(amax / 127.0f);
++    const int8_t q = q8_1_quant(xi, d, amax);
++    y[i / Q8K].qs[i % Q8K] = q;
++    if (i % Q8K == 0) y[i / Q8K].ds = q8_1_ds(d, sum);
++}
++
+ // Exact pinned vec_dot_q5_K_q8_1_impl_vmmq expression and integer dot order.
+ __device__ __forceinline__ float q5_q8_dot_impl(
+     const int* __restrict__ vl, const int* __restrict__ vh, const int* __restrict__ u,
+@@ -2566,6 +2586,20 @@ void native_swiglu_quantize_q8_1(const float* gate, const float* up, void* x_q8_
+     launch_check();
+ }
+ 
++void native_qsa_gate_quantize_q8_1(const float* attn, const float* q_full, void* x_q8_1, int rows, int head_dim,
++                                   void* stream) {
++    validate_pointer(attn);
++    validate_pointer(q_full);
++    validate_pointer(x_q8_1);
++    validate_stream(stream);
++    if (rows <= 0 || head_dim <= 0 || head_dim % 32 != 0) throw std::invalid_argument("native QSA gate + q8_1: bad shape");
++    const int n_total = rows * head_dim;
++    const unsigned blocks = unsigned((std::size_t(n_total) + QUANT_THREADS - 1) / QUANT_THREADS);
++    native_qsa_gate_quantize_q8_1_kernel<<<blocks, QUANT_THREADS, 0, static_cast<cudaStream_t>(stream)>>>(
++        attn, q_full, static_cast<Q81Block*>(x_q8_1), n_total, head_dim);
++    launch_check();
++}
++
+ void native_q5_k_mmvq(const void* weights, const void* x_q8_1, float* y,
+                       int n_in, int n_out, int ncols, void* stream) {
+     validate_shape(n_in, ncols, QK);

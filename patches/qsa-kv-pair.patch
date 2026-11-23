@@ -1,0 +1,28 @@
+diff --git a/src/core/verify.cpp b/src/core/verify.cpp
+index d796d9e..d5de953 100644
+--- a/src/core/verify.cpp
++++ b/src/core/verify.cpp
+@@ -1907,8 +1907,21 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
+                 }
+                 if (!sidem) idx_key(cs);
+                 stamp(l, 7, grp);
+-                mm(wk, kcur_ + tb * NKV * HD, (int) N, (int) (NKV * HD));
+-                mm(wv, vcur_ + tb * NKV * HD, (int) N, (int) (NKV * HD));
++                // rdna3-moe-tuning STRATA_QSA_KV_PAIR=1 (opt-in): the key and the value projection (one format, the same
++                // q8_1 input) in one RDNA launch - bitwise the two calls (rdna_mmvq_pair, needs STRATA_RDNA_PAIR=1), one launch
++                // fewer a QSA layer
++                static const bool kv_pair_on = [] { const char* e = std::getenv("STRATA_QSA_KV_PAIR"); return e != nullptr && e[0] == '1'; }();
++                auto il_kv = [&](const WeightRef* w) {
++                    return g_mmvq_il() && strata::kernels::native_mmvq_il_supported(w->native_type, n, (int) (NKV * HD));
++                };
++                const bool kv_paired = kv_pair_on && wk->map_pitch <= 0 && wv->map_pitch <= 0 && wk->native_type == wv->native_type &&
++                    !il_kv(wk) && !il_kv(wv) &&
++                    strata::kernels::rdna_mmvq_pair(wk->native_type, wk->native_data, wv->native_data, xq_, kcur_ + tb * NKV * HD,
++                                                    vcur_ + tb * NKV * HD, (int) N, (int) (NKV * HD), (int) (NKV * HD), n, cs);
++                if (!kv_paired) {
++                    mm(wk, kcur_ + tb * NKV * HD, (int) N, (int) (NKV * HD));
++                    mm(wv, vcur_ + tb * NKV * HD, (int) N, (int) (NKV * HD));
++                }
+                 if (qb) norm_rope(kcur_ + tb * NKV * HD, wkn, (int) (n * NKV), (int) HD, pos_k + tb * NKV);
+                 else for (int t = tb; t < te; ++t) norm_rope(kcur_ + t * NKV * HD, wkn, (int) NKV, (int) HD, pos_ + t * NH);
+                 if (st.kv_rot) {   // K and V rotated before they are stored (kv_q4.hpp)

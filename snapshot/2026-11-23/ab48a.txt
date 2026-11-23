@@ -1,0 +1,23 @@
+== base_1  XENV=[] XARGS=[]
+mean 115.4 tok/s over 6 requests
+   rounds 875  tokens/round 2.635  ms/round 22.92  tok/s 115.0  mean window rows 3.22
+   window rows T: {1: 96, 2: 142, 3: 122, 4: 509, 6: 6}  accepted a: {0: 221, 1: 198, 2: 137, 3: 318, 5: 1}
+   zero-accept rounds 221 (25.3% of rounds): no draft offered 96 (11.0%), offered but rejected 125 (14.3%)
+   pos  drafted  mean_p  offered  mean_p  reached  accepted  acc|reached  acc|all rounds
+     1      875  0.850      779  0.908      779       654        0.840  0.747
+     2      778  0.786      637  0.886      547       456        0.834  0.521
+     3      635  0.773      515  0.877      387       319        0.824  0.365
+   offline head accuracy [0.819, 0.762, 0.723] predicts: zero-accept 18.1%, 2.89 tokens/round with every draft offered
+   head p bucket (reached drafts): n, accepted
+     0.5-0.6:    139 0.403
+     0.6-0.7:    118 0.458
+     0.7-0.8:    126 0.587
+     0.8-0.9:    131 0.786
+     0.9-1.0:   1180 0.958
+   rounds cut by the window rule: 360 / 875; p of the cut draft: {'0.0': 3, '0.1': 35, '0.2': 87, '0.3': 97, '0.4': 138}
+   round ms by window rows (median, n): {1: (18.33, 96), 2: (19.44, 142), 3: (21.16, 122), 4: (24.05, 509), 6: (30.52, 6)}
+   strata decode GPU stages (ms/window): GDN layers: q8+qkv/q-idx gemv 1.81 conv 0.25 ab 0.44 z 0.13 rec 0.57 out-proj 0.90 router+plan+bell 0.98 shared+quant 0.86 waitA 0.36 VRAM hits 3.35 waitB 0.10 PCIe grp 0.10 waitCPU 0.11 copy+combine 2.85 (gap) 0.10 head 0.71   hc0 norm 0.32   hc0 down 0.59   hc0 up 0.58   hc1 norm 0.10   hc1 down 0.59   hc1 up 0.56 | QSA layers: q8+kv-idx 0.10 k/v+norm-rope 0.30 kv+idx append 0.24 q+q-idx 0.77 scores+topk 0.15 kv-resolve 0.22 attention 0.57 gate 0.08 out-proj 0.34 router+plan+bell 0.32 shared+quant 0.28 waitA 0.12 VRAM hits 1.09 waitB 0.03 PCIe grp 0.03 w
+   strata decode timing: 156 windows, avg T 3.10, 2.46 tokens/window, 21.62 ms/window = verify 19.76 (GPU-reach wait 14.76 + per-layer host 4.00 [plan 0.16 actq 0.13 jobs 0.08 CPU 3.29] + stage 0.03) + commit/emit 0.07 + draft 1.74; per layer-window: CPU experts 1.31 (1.66 entries), VRAM hits 28.07, PCIe 0.00; adapt wait 0.03 join 0.00, 15.3 swaps/window
+   strata decode timing: commit/emit = adapt spawn 0.026 + nonfinite check 0.002 + commit launch 0.028 + emit 0.009 ms/window
+   strata decode GPU stages (ms/window): GDN layers: q8+qkv/q-idx gemv 1.71 conv 0.25 ab 0.42 z 0.16 rec 0.54 out-proj 0.87 router+plan+bell 0.98 shared+quant 0.85 waitA 0.36 VRAM hits 3.17 waitB 0.10 PCIe grp 0.10 waitCPU 0.13 copy+combine 1.40 (gap) 0.10 head 0.69   hc0 norm 0.30   hc0 down 0.56   hc0 up 0.55   hc1 norm 0.10   hc1 down 0.56   hc1 up 0.54 | QSA layers: q8+kv-idx 0.10 k/v+norm-rope 0.30 kv+idx append 0.24 q+q-idx 0.75 scores+topk 0.15 kv-resolve 0.20 attention 0.55 gate 0.08 out-proj 0.33 router+plan+bell 0.32 shared+quant 0.28 waitA 0.12 VRAM hits 1.02 waitB 0.03 PCIe grp 0.03 w
+ab done

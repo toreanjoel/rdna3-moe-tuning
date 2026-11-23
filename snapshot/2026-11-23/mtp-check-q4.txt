@@ -1,0 +1,23 @@
+  att = F.scaled_dot_product_attention(q.transpose(0, 1)[None], kk.transpose(0, 1)[None], vv.transpose(0, 1)[None],
+  att = F.scaled_dot_product_attention(q.transpose(0, 1)[None], kk.transpose(0, 1)[None], vv.transpose(0, 1)[None],
+12 prompt sequences, 13 decode requests, 12 replay sequences
+12 requests paired, 4616 generated tokens
+draft vocab: --vocab 59607 ids, rt dir 106299 ids, shared 59448; server step-1 drafts 1943: 1943 in --vocab, 1938 in the rt dir's
+generated tokens the draft vocab cannot emit: --vocab 4.97%, rt dir 5.19%
+[float] torch head on the DECODE rows, steps 1-3 top-1: 0.773 / 0.700 / 0.647  (4604 cells)
+[float] torch head on the PROMPT-path rows of the same text:  0.775 / 0.703 / 0.652  (4703 cells; replay tokens equal 0.998)
+[float] decode vs prompt-path rows: cosine 0.99621, relative difference 0.0749
+[float] torch step-1 pick = the server's first draft: 0.913 of 1943 chains; mean |p torch - p server| 0.053
+[q4 projections] torch head on the DECODE rows, steps 1-3 top-1: 0.769 / 0.692 / 0.637  (4604 cells)
+[q4 projections] torch head on the PROMPT-path rows of the same text:  0.773 / 0.696 / 0.645  (4703 cells; replay tokens equal 0.998)
+[q4 projections] decode vs prompt-path rows: cosine 0.99621, relative difference 0.0749
+[q4 projections] torch step-1 pick = the server's first draft: 0.931 of 1943 chains; mean |p torch - p server| 0.043
+[q4 projections + experts] torch head on the DECODE rows, steps 1-3 top-1: 0.770 / 0.689 / 0.632  (4604 cells)
+[q4 projections + experts] torch head on the PROMPT-path rows of the same text:  0.771 / 0.695 / 0.643  (4703 cells; replay tokens equal 0.998)
+[q4 projections + experts] decode vs prompt-path rows: cosine 0.99621, relative difference 0.0749
+[q4 projections + experts] torch step-1 pick = the server's first draft: 0.934 of 1943 chains; mean |p torch - p server| 0.041
+[q4 projections + experts + head] torch head on the DECODE rows, steps 1-3 top-1: 0.767 / 0.690 / 0.633  (4604 cells)
+[q4 projections + experts + head] torch head on the PROMPT-path rows of the same text:  0.764 / 0.696 / 0.639  (4703 cells; replay tokens equal 0.998)
+[q4 projections + experts + head] decode vs prompt-path rows: cosine 0.99621, relative difference 0.0749
+[q4 projections + experts + head] torch step-1 pick = the server's first draft: 0.946 of 1943 chains; mean |p torch - p server| 0.032
+check done

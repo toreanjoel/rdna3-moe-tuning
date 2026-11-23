@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # mtp_train.py — distil the MTP draft layer to this IQ3_S backbone: torch reference of the engine's draft layer (src/core/mtp.cpp), trained on STRATA_MTP_DUMP rows, exported as a new rt dir
-# usage (train-venv): mtp_train.py prep   --gguf MAIN.gguf --out W          embed + head dequantized once (W/embed.pt, W/head.pt)
+# usage (train-venv; --qat = with the server's Q4_0 quantization): mtp_train.py prep   --gguf MAIN.gguf --out W          embed + head dequantized once (W/embed.pt, W/head.pt)
 #                     mtp_train.py eval   --dump F --w W [--ckpt C]          step-1 top-1 agreement with the backbone's text
 #                     mtp_train.py train  --dump F --w W --out C [--steps N --lr X]
 #                     mtp_train.py export --ckpt C --rt RT_IN --out RT_OUT   dense.bin re-encoded (experts, draft vocab copied)
@@ -12,6 +12,7 @@ import torch.nn.functional as F
 
 H, HC, LR, NH, NKV, HD, NROT, FF, NE, K = 2560, 4, 320, 24, 2, 256, 64, 640, 512, 10
 EPS, THETA = 1e-6, 1e7
+LONG, TAIL = 1536, int(os.environ.get("MTP_TAIL", "384"))   # sequences over LONG cells: loss / eval on the last TAIL only
 D = Path(os.environ.get("MTP_D", Path.home() / "work/rdna3/data/mtp"))
 DEV = os.environ.get("MTP_DEV", "cuda")
 
@@ -38,6 +39,22 @@ def load_weights(rt):
     gu = load_bf16("mtp.layers.0.mlp.experts.gate_up_proj", inv["mtp.layers.0.mlp.experts.gate_up_proj"])
     dn = load_bf16("mtp.layers.0.mlp.experts.down_proj", inv["mtp.layers.0.mlp.experts.down_proj"])
     return w, gu, dn
+
+
+# ---------------------------------------------------------------- run-time quantization (--qat)
+def q4_0(x):
+    """ggml's reference Q4_0 over blocks of 32 along the last dim, dequantized: what --mtp-q4 makes of the Q8_0 projections
+    and the draft head, and what the q4_0 expert pack holds."""
+    shp = x.shape
+    b = x.reshape(-1, 32).float()
+    mx = b.gather(1, b.abs().argmax(1, keepdim=True))
+    d = mx / -8.0
+    q = torch.trunc(b * torch.where(d == 0, torch.zeros_like(d), 1.0 / d) + 8.5).clamp(0, 15)
+    return ((q - 8.0) * d.half().float()).reshape(shp).to(x.dtype)
+
+def q4_big(t, step=16):   # in place, in slices (the experts, the head)
+    for i in range(0, t.shape[0], step): t[i:i + step] = q4_0(t[i:i + step].to(DEV)).to(t.device)
+    return t
 
 
 # ---------------------------------------------------------------- the draft layer (mtp.cpp record_front + record_rest)
@@ -75,9 +92,10 @@ class Mtp(torch.nn.Module):
         self.register_buffer("embed", embed, persistent=False)                # (V, H) bf16
         self.register_buffer("head", head, persistent=False)                  # (V, H) bf16
         self.hnorm_stream = hnorm_stream
+        self.qat = set()   # --qat: the tensors the server reads as Q4_0 (straight-through in training)
 
     def w(self):
-        return {k.replace("__", "."): v for k, v in self.p.items()}
+        return {k.replace("__", "."): (v + (q4_0(v) - v).detach() if k in self.qat else v) for k, v in self.p.items()}
 
     def experts(self, x, ids, wts):
         out = torch.zeros_like(x)
@@ -183,8 +201,11 @@ def seq_rows(path, chunks):
 def batch(path, seq, dev=DEV, max_len=2048):
     toks, chunks = seq[0], seq[1]
     R = seq_rows(seq[2] if len(seq) > 2 else path, chunks)
-    n = min(R.shape[0], len(toks) - 2, max_len)   # cell i: R_i, token i+1, label i+2
-    return R[:n].to(dev), torch.from_numpy(toks[1:n + 1]).to(dev), torch.from_numpy(toks[2:n + 2]).to(dev), torch.arange(n, device=dev)
+    n = min(R.shape[0], len(toks) - 2)   # cell i: R_i, token i+1, label i+2
+    s = max(0, n - max_len)              # a long sequence (a session replay): its last max_len cells, where the answer is
+    lo = n - s - TAIL if n > LONG else 0 # ... and only the answer's cells count (the session's own text is not this model's)
+    return (R[s:n].to(dev), torch.from_numpy(toks[s + 1:n + 1]).to(dev), torch.from_numpy(toks[s + 2:n + 2]).to(dev),
+            torch.arange(s, n, device=dev), lo)
 
 
 # ---------------------------------------------------------------- commands
@@ -207,6 +228,11 @@ def make_model(a):
     m = Mtp(w, gu, dn, embed, head, hnorm_stream=not a.pooled).to(DEV)
     if getattr(a, "ckpt", None):
         m.p.load_state_dict(torch.load(a.ckpt), strict=False)
+    if getattr(a, "qat", False):   # what the server computes with: Q4_0 projections (--mtp-q4 all), q4_0 experts, Q4_0 draft head
+        kinds = rt_kinds(a.rt)
+        m.qat = {k for k in m.p.keys() if kinds.get(k.replace("__", ".")) == "q8_0"}
+        with torch.no_grad(): q4_big(m.gu); q4_big(m.dn); q4_big(m.head, 4096)
+        print(f"qat: {len(m.qat)} projections, the experts and the head at Q4_0", flush=True)
     return m
 
 def vocab_mask(a, V):
@@ -220,17 +246,17 @@ def vocab_mask(a, V):
 def evaluate(m, path, seqs, mask, steps=3):
     hit = [0] * steps; tot = [0] * steps
     for s in seqs:
-        R, tn, lab, pos = batch(path, s)
+        R, tn, lab, pos, lo = batch(path, s)
         sample, Rout, (k, v) = m(R, tn, pos)
         lg = sample.to(torch.bfloat16) @ m.head.T
         if mask is not None: lg = lg.float() + mask
         pred = lg.argmax(-1)
-        hit[0] += (pred == lab).sum().item(); tot[0] += len(lab)
+        hit[0] += (pred == lab)[lo:].sum().item(); tot[0] += len(lab) - lo
         # chain: step j row t = cell t + j, from the previous step's residual and the true token (accepted path)
         Rp, n = Rout, len(lab)
         for j in range(1, steps):
             if n - j <= 0: break
-            toks = s[0]
+            toks = s[0][int(pos[0]):]                                        # (a long sequence starts at its tail window)
             tn_j = torch.from_numpy(toks[j + 1: j + 1 + n - j]).to(DEV)      # token at cell+1 = label of the previous step
             lab_j = torch.from_numpy(toks[j + 2: j + 2 + n - j]).to(DEV)
             pos_j = pos[: n - j] + j
@@ -238,7 +264,7 @@ def evaluate(m, path, seqs, mask, steps=3):
             Rp = Rp
             lg = sample.to(torch.bfloat16) @ m.head.T
             if mask is not None: lg = lg.float() + mask
-            hit[j] += (lg.argmax(-1)[: len(lab_j)] == lab_j).sum().item(); tot[j] += len(lab_j)
+            hit[j] += (lg.argmax(-1)[: len(lab_j)] == lab_j)[lo:].sum().item(); tot[j] += max(len(lab_j) - lo, 0)
     return [h / max(t, 1) for h, t in zip(hit, tot)]
 
 def cmd_eval(a):
@@ -264,21 +290,23 @@ def cmd_train(a):
     step, steps = 0, a.steps
     while step < steps:
         for i in rng.permutation(len(tr)):
-            R, tn, lab, pos = batch(a.dump, tr[i])
+            R, tn, lab, pos, lo = batch(a.dump, tr[i])
+            def tgl(y, _lo=lo):   # the draft vocab's labels; cells before the answer of a long sequence are ignored
+                y = tgt(y).clone(); y[:_lo] = -100; return y
             lr = a.lr * min(1.0, (step + 1) / 50) * 0.5 * (1 + math.cos(math.pi * min(step / steps, 1.0)))
             for g in opt.param_groups: g["lr"] = lr
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 sample, Rout, (k, v) = m(R, tn, pos)
-                loss = F.cross_entropy(((sample @ m.head.T).float() + (mask if mask is not None else 0)), tgt(lab))
+                loss = F.cross_entropy(((sample @ m.head.T).float() + (mask if mask is not None else 0)), tgl(lab))
                 # steps 2..chain on the accepted path, each fed the previous step's own residual (FastMTP), weight chain_w^(j)
-                Rp, n, toks = Rout, len(lab), tr[i][0]
+                Rp, n, toks = Rout, len(lab), tr[i][0][int(pos[0]):]
                 for j in range(1, a.chain):
                     if n - j <= 0: break
                     tn_j = torch.from_numpy(toks[j + 1: j + 1 + n - j]).to(DEV)
                     lab_j = torch.from_numpy(toks[j + 2: j + 2 + n - j]).to(DEV)
                     sj, Rp, _ = m(Rp[: n - j], tn_j[: len(lab_j)], pos[: n - j][: len(lab_j)] + j, kv=(k.detach(), v.detach(), pos))
                     loss = loss + a.chain_w ** j * F.cross_entropy(((sj @ m.head.T).float() + (mask if mask is not None else 0)),
-                                                                   tgt(lab_j))
+                                                                   tgl(lab_j))
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(params, 1.0)
@@ -330,5 +358,6 @@ if __name__ == "__main__":
     ap.add_argument("--steps", type=int, default=2000); ap.add_argument("--lr", type=float, default=2e-5)
     ap.add_argument("--eval-every", type=int, default=500); ap.add_argument("--freeze", default="")
     ap.add_argument("--chain", type=int, default=1); ap.add_argument("--chain-w", type=float, default=0.5)
+    ap.add_argument("--qat", action="store_true", help="train / eval with the server's Q4_0 projections, experts and head (straight-through)")
     a = ap.parse_args()
     {"prep": prep, "eval": cmd_eval, "train": cmd_train, "export": cmd_export}[a.cmd](a)

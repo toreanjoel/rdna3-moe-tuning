@@ -1,0 +1,19 @@
+== base_1  XENV=[] XARGS=[]
+mean 133.0 tok/s over 6 requests
+== cumx1_1  XENV=[STRATA_SPEC_CUMX=1 STRATA_SPEC_CUMX_ROW_MS=1.1,2.0,2.9] XARGS=[]
+mean 134.9 tok/s over 6 requests
+== cumx2_1  XENV=[STRATA_SPEC_CUMX=2 STRATA_SPEC_CUMX_ROW_MS=1.1,2.0,2.9] XARGS=[]
+mean 133.6 tok/s over 6 requests
+== base_2  XENV=[] XARGS=[]
+mean 133.0 tok/s over 6 requests
+== cumx1_2  XENV=[STRATA_SPEC_CUMX=1 STRATA_SPEC_CUMX_ROW_MS=1.1,2.0,2.9] XARGS=[]
+mean 133.2 tok/s over 6 requests
+== cumx2_2  XENV=[STRATA_SPEC_CUMX=2 STRATA_SPEC_CUMX_ROW_MS=1.1,2.0,2.9] XARGS=[]
+mean 133.4 tok/s over 6 requests
+== base_3  XENV=[] XARGS=[]
+mean 132.5 tok/s over 6 requests
+== cumx1_3  XENV=[STRATA_SPEC_CUMX=1 STRATA_SPEC_CUMX_ROW_MS=1.1,2.0,2.9] XARGS=[]
+mean 134.6 tok/s over 6 requests
+== cumx2_3  XENV=[STRATA_SPEC_CUMX=2 STRATA_SPEC_CUMX_ROW_MS=1.1,2.0,2.9] XARGS=[]
+mean 136.5 tok/s over 6 requests
+ab done

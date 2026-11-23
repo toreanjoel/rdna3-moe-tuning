@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # strata-rdna3.sh — install, run and benchmark the RDNA3 Strata fork (nicejunjie/Strata-rdna3) on one RX 7900 XTX.
 # Usage: ./strata-rdna3.sh install | mtp4 | serve | perf | stop | status | monitor | speed | quality | tune | patch | build | bench [lengths] | uninstall
-# Env: FAST MTP CTX HOST PORT SETUP GPUS TUNE SCLK MCLK VO WATTS EPP BOOST, XENV/XARGS (engine overrides), NAME/REPEATS (bench)
+# Env: FAST MTP HNORM DVOCAB CUMX CTX HOST PORT SETUP GPUS TUNE SCLK MCLK VO WATTS EPP BOOST, XENV/XARGS (engine overrides), NAME/REPEATS (bench)
 set -euo pipefail
 
 REPO=https://github.com/nicejunjie/Strata-rdna3
@@ -40,7 +40,17 @@ MTP=${MTP:-ft}; MTPARG=""; [ "$MTP" != 2 ] && [ -s "$D/mtp/rt-q4_0/experts.txt" 
 # The draft layer's hidden-input norm per hyper-connection stream (llama.cpp's qwen4exp MTP graph) instead of one RMS
 # over all four: varied chats 131.2 -> 136.9 (+4.3%, sweeps 42-43, 4 rounds). Drafts only; HNORM=0 = the fork's pooled norm.
 [ "${HNORM:-1}" = 1 ] && MTPARG="$MTPARG --mtp-hnorm stream"
-export STRATA_X_ENV="STRATA_HIPBLASLT_TUNING=$TABLE $KERNENV $FASTENV ${XENV:-}" STRATA_X_ARGS="--max-context $CTX $MTPARG ${XARGS:-}"
+# Draft vocabulary: the fork's zh60k subset cannot emit ~5% of the tokens this model writes in English chats and code
+# (ordinary mid-frequency words: "replication", "PostgreSQL"), so those drafts always miss. tools/draft_vocab_plus.bin =
+# zh60k + the 5,725 other tokens seen in the model's own answers and coding sessions (tools/draft_vocab_plus.py):
+# tokens kept per round 2.63 -> 2.70 on varied chats (ab49). DVOCAB=0 = the fork's subset.
+HERE_=$(cd "$(dirname "$0")" && pwd)
+[ "${DVOCAB:-1}" != 0 ] && [ -s "$HERE_/tools/draft_vocab_plus.bin" ] && MTPARG="$MTPARG --mtp-draft-vocab $HERE_/tools/draft_vocab_plus.bin"
+# Draft window by a marginal rule instead of --spec-min-p's per-draft floor (patches/spec-cumx.patch): draft row k stays
+# while the product of the draft probabilities up to it is at least (tokens per ms now) x (the ms row k adds: 1.1 / 2.0 /
+# 2.9 for rows 2-4, measured here with STRATA_SPEC_TRACE). Varied chats +1.1%, 3 of 3 rounds (ab48c). CUMX=0 = min-p.
+CUMXENV=""; [ "${CUMX:-1}" != 0 ] && CUMXENV="STRATA_SPEC_CUMX=${CUMX:-1} STRATA_SPEC_CUMX_ROW_MS=${CUMX_ROW_MS:-1.1,2.0,2.9}"
+export STRATA_X_ENV="STRATA_HIPBLASLT_TUNING=$TABLE $KERNENV $FASTENV $CUMXENV ${XENV:-}" STRATA_X_ARGS="--max-context $CTX $MTPARG ${XARGS:-}"
 
 # setup.py moves the models of every Strata install listed in ~/.config/strata; a private config stops that.
 export XDG_CONFIG_HOME=$SRC/.config

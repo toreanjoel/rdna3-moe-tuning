@@ -2,11 +2,11 @@
 # mtp_data.py — MTP head training data: varied prompts, the model's own greedy answers, then a replay through a server started with STRATA_MTP_DUMP (final residual rows + tokens)
 # usage: mtp_data.py prompts OUT.jsonl [N]          deterministic varied prompts (code-heavy, prose, Q&A, lists)
 #        mtp_data.py selfinstruct OUT.jsonl [N] [port]    prompts written by the model itself across ~40 domains (resumable)
-#        mtp_data.py gen PROMPTS.jsonl OUT.jsonl [max_tokens] [port]   greedy answers (resumable: skips done ids)
+#        mtp_data.py gen PROMPTS.jsonl OUT.jsonl [max_tokens] [port]   the model's answers (resumable: skips done ids); rows hold "prompt" or a whole "messages" list (tools/sessions.py)
 #        mtp_data.py replay GEN.jsonl [port] [start] [end]             [user, assistant(reasoning+content)] -> 1 token, so the
 #                                                     prompt path dumps every row (start the server with STRATA_MTP_DUMP=<file>
 #                                                     and --conversation-cache-mib 0)
-import json, random, sys, time, urllib.request
+import json, os, random, sys, time, urllib.request, zlib
 
 LANGS = ["Python", "TypeScript", "Rust", "Go", "C++", "Bash", "SQL", "Java", "C", "Elixir"]
 CODE = [
@@ -120,7 +120,14 @@ def gen(src, out, max_tokens=768, port=8080):
         for l in open(src):
             r = json.loads(l)
             if r["id"] in done: continue
-            j = post(port, {"messages": [{"role": "user", "content": r["prompt"]}], "max_tokens": max_tokens, "temperature": 0})
+            # varied like real use (MTP_MIX=0: all greedy with thinking, as round 1): a third without thinking, half sampled at 0.6
+            k = zlib.crc32(str(r["id"]).encode()) if os.environ.get("MTP_MIX", "1") != "0" else 0
+            body = {"messages": r.get("messages") or [{"role": "user", "content": r["prompt"]}], "max_tokens": max_tokens,
+                    "temperature": 0.6 if k % 2 else 0, "seed": k % 100000}
+            if k % 3 == 1: body["chat_template_kwargs"] = {"enable_thinking": False}
+            try: j = post(port, body)
+            except Exception as e:
+                print(f"{r['id']}: failed {str(e)[:100]}", flush=True); continue
             m = j["choices"][0]["message"]
             r.update(content=m.get("content") or "", reasoning=m.get("reasoning_content") or "",
                      n=j.get("usage", {}).get("completion_tokens", 0))
@@ -134,7 +141,9 @@ def replay(src, port=8080, start=0, end=1 << 30):
         r = json.loads(l)
         msg = {"role": "assistant", "content": r["content"]}
         if r.get("reasoning"): msg["reasoning_content"] = r["reasoning"]
-        post(port, {"messages": [{"role": "user", "content": r["prompt"]}, msg], "max_tokens": 1, "temperature": 0})
+        if not (r["content"] or r.get("reasoning")): continue
+        try: post(port, {"messages": (r.get("messages") or [{"role": "user", "content": r["prompt"]}]) + [msg], "max_tokens": 1, "temperature": 0})
+        except Exception as e: print(f"{r['id']}: replay failed {str(e)[:100]}", flush=True)
         if i % 50 == 0: print(f"replayed {i}", flush=True)
 
 if __name__ == "__main__":
