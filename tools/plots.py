@@ -50,10 +50,9 @@ def generation():
         ("Strata 0.1.62 (stock)", 78, False, "71–85"),
         ("Strata-rdna3 (fork's config)", 103.5, False, "103–104"),
         ("fork author's box (9950X3D2)", 116.5, False, "114–119"),
-        ("this repo, daily 294 W", 117.7, True, "117.7"),
-        ("this repo, perf mode", 121.6, True, "121.6"),
+        ("this repo, daily 294 W", 129.6, True, "129.6"),
     ], 140, "RX 7900 XTX 24 GB · Ryzen 9 7945HX · 92 GB DDR5-5200 · Qwen3.8-Flash-Next IQ3_S (78 GB) · "
-             "256 tokens, median of 5, greedy")
+             "256 tokens, greedy")
 
 
 def ladder():
@@ -61,8 +60,8 @@ def ladder():
         ("fork's shipped config", 103.5, False, "103.5"),
         ("+ tuning, FAST=1 (skip low-ranked missed experts)", 110, False, "110"),
         ("+ kernel patches (VRAM 1300)", 113.5, False, "113.5"),
-        ("+ VRAM 1400 (daily default)", 117.7, True, "117.7"),
-        ("+ core 3000 (perf mode, opt-in)", 121.6, True, "121.6"),
+        ("+ VRAM 1400", 117.7, False, "117.7"),
+        ("+ MTP draft-head work (q4_0, per-stream norm, retrained)", 129.6, True, "129.6"),
     ], 140, "Same box and model; each row includes the rows above it")
 
 

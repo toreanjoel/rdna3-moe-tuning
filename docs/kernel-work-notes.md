@@ -275,3 +275,6 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
   Next: spec-min-p / spec with the ft head (sweep45).
 - Box ssh: a remote command whose text contains "strata"/"chatbench" or a pkill pattern gets killed by
   strata-rdna3.sh stop/serve or pkill -f (exit 255). Launch via setsid nohup bash <script>; bracket patterns in pgrep.
+- 2026-11-23 sweep45/46 (retrained head): --spec 5 wins varied chats 136.8 -> 137.3 (3/3 rounds) but loses the bench
+  (8K 129.6 -> 121.0, 32K 122.7 -> 119.5): dropped. --spec-min-p 0.4 = base. Bench now 129.6 / 122.7 (8K / 32K) with
+  q4_0 + hnorm stream + ft head, vs 117.7 / 117.4 before the MTP work (+10% / +4.5%). Perf mode not re-run.

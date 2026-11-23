@@ -1,6 +1,6 @@
 # rdna3-moe-tuning
 
-Run **Qwen3.8-Flash-Next (IQ3_S, 82 GB MoE)** on a **single RX 7900 XTX (24 GB)** at **~117 tok/s**,
+Run **Qwen3.8-Flash-Next (IQ3_S, 82 GB MoE)** on a **single RX 7900 XTX (24 GB)** at **~130 tok/s**,
 within a 294 W power cap. One script installs, tunes, serves and benchmarks
 [Strata-rdna3](https://github.com/nicejunjie/Strata-rdna3), a gfx1100-tuned fork of the Strata engine.
 
@@ -11,7 +11,7 @@ the rest on the CPU in parallel, and drafts 4 tokens ahead with an MTP head.
 
 | | daily (`serve`) | perf mode (`perf`, opt-in) |
 |---|---:|---:|
-| generation, 8K / 32K context | 117.7 / 117.4 tok/s | 121.6 / 122.5 tok/s |
+| generation, 8K / 32K context | 129.6 / 122.7 tok/s | 121.6 / 122.5 tok/s (measured before the MTP work; not re-run) |
 | clocks | core 2300, VRAM 1400 | core 3000, VRAM 1400 |
 | power | 294 W cap, ~230 W used | 294 W cap, ~287 W used (coil whine) |
 
@@ -56,7 +56,8 @@ Single user, distinct prompts, 256 generated tokens, median of 5 runs, greedy.
 
 | | prompt 8K | prompt 32K | generation 8K / 32K |
 |---|---:|---:|---:|
-| **this repo, `FAST=1` + kernel patches, VRAM 1400 (default)** | **2,903** | **3,605** | **117.7 / 117.4** |
+| **this repo, + MTP draft-head work (q4_0, per-stream norm, retrained; default)** | **2,870** | **3,593** | **129.6 / 122.7** |
+| this repo, `FAST=1` + kernel patches, VRAM 1400 | 2,903 | 3,605 | 117.7 / 117.4 |
 | this repo, `FAST=1` + kernel patches, VRAM 1300 | 2,860 | 3,556 | 113–114 / 114 |
 | this repo, `FAST=1`, before the kernel patches | 2,860 | 3,555 | 109–111 / 109 |
 | this repo, `FAST=0` (exact answers) | 2,840 | 3,553 | 101 / 103 |
@@ -194,6 +195,7 @@ would need more power. Raw output: [`snapshot/2026-11-22/sweep19.txt`](snapshot/
 | `--mtp-hnorm stream` (the draft layer's hidden-input RMS per hyper-connection stream, as llama.cpp's qwen4exp MTP graph, not one RMS over all four; 2026-11-23, `snapshot/2026-11-23/sweep42.txt`, `sweep43.txt`) | varied chats 131.2 → 136.9 (+4.3%, 4 rounds, 136.1–137.1 each) | **yes** (`HNORM=0` = pooled) |
 | English-only draft vocabulary (`--mtp-draft-vocab data/draft_vocab_en.bin`) / the full vocabulary (`STRATA_MTP_FULL_HEAD=1`) | +2.6% alone, +0.2% on top of hnorm / −3.9% | no (non-English drafts would lose) / no |
 | MTP draft layer retrained on this model's greedy answers (`tools/mtp_train.py`, 1,500 prompts, 2,000 steps; `logs/sweep44.txt`; 2026-11-23) | held-out draft top-1 75.5 → 81.9% (step 1); varied chats 136.3 → 137.2 (+0.7%, 136.1/136.7/136.2 vs 137.1/137.1/137.5) | **yes** (`MTP=ft`, default once built) |
+| `--spec 5` / `--spec-min-p 0.4` with the retrained head (`logs/sweep45.txt`, `sweep46.txt`; 2026-11-23) | varied chats 136.8 → 137.3 / 136.8 (3 rounds); bench 8K 129.6 → 121.0, 32K 122.7 → 119.5 (2 rounds each) | no |
 | `STRATA_HC_REQ8=1` | 114 / 107, prompts −5% | no |
 | `STRATA_COPY_HIP_PRIO=1`, `--host-core sibling` | −3% / none | no |
 | higher core clock (no SCLK cap) | ~+1 tok/s, coil whine | no |
