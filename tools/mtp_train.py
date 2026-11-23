@@ -248,6 +248,7 @@ def cmd_train(a):
     seqs = read_dump(a.dump)
     tr, ev = seqs[:-a.n_eval], seqs[-a.n_eval:]
     mask = vocab_mask(a, m.head.shape[0])
+    tgt = (lambda y: y) if mask is None else (lambda y: torch.where(torch.isinf(mask[y]), -100, y))   # labels the draft vocab can't emit: ignored
     train_names = [k for k in m.p.keys() if not any(s in k for s in a.freeze.split(","))] if a.freeze else list(m.p.keys())
     for k, p in m.p.items(): p.requires_grad_(k in train_names)
     params = [m.p[k] for k in train_names]
@@ -264,12 +265,12 @@ def cmd_train(a):
             for g in opt.param_groups: g["lr"] = lr
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 sample, Rout, (k, v) = m(R, tn, pos)
-                loss = F.cross_entropy(((sample @ m.head.T).float() + (mask if mask is not None else 0)), lab)
+                loss = F.cross_entropy(((sample @ m.head.T).float() + (mask if mask is not None else 0)), tgt(lab))
                 if a.chain > 1:   # step 2 on the accepted path
                     n = len(lab) - 1
                     s2, _, _ = m(Rout[:n], lab[:n], pos[:n] + 1, kv=(k.detach(), v.detach(), pos))
                     loss = loss + a.chain_w * F.cross_entropy(((s2 @ m.head.T).float() + (mask if mask is not None else 0)),
-                                                              torch.from_numpy(tr[i][0][3:3 + n]).to(DEV)[:n])
+                                                              tgt(torch.from_numpy(tr[i][0][3:3 + n]).to(DEV)[:n]))
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(params, 1.0)
