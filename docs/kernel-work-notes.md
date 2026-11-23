@@ -227,3 +227,13 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
   18.49-18.51 (bitwise, nothing); ATTN_LANECELL 114.2 / 18.52-18.54 (bitwise, nothing); Q6_PACKED 115.1 / 18.51 but answers
   DIFF: same ms/window, so the +0.7% is a luckier acceptance on changed tokens, not speed. With GDN_SPLIT (above) every
   item of the gfx1151 set is now ruled out alone on gfx1100. SH_STREAM was already out (graph branches cost here).
+
+## Per-layer chain and the fusion budget 2026-11-23 (logs/kprof-k5 on the box, .nullrouter/tools/kseq.py; s35_1..4)
+- A GDN layer-window is 15 dependent launches: hc read, qkv+z mix, conv_ab, step_norm, out q6k, hc read, router_publish,
+  shexp gate/up mix, swiglu_quantize, shexp down IQ4_NL, wait_flag_copy (plan), expert gu, swiglu_q8_1_entries, expert
+  down, combine_cpu. QSA layers ~28. ~720-800 launches a window.
+- STRATA_EXP_AUTO=2 (IQ3_XXS gate/up through the fused gate/up + SwiGLU + q8_1 kernel, one launch fewer on those layers):
+  bitwise, 18.48 / 18.54 -> 18.55 / 18.55 ms/window (114.5 / 114.2 -> 114.0 / 114.1). Level: the launch saved is paid back
+  by the fused kernel at 3 tokens. Dropped.
+- Budget: an empty node is ~2.8 us (sweep7), so 1 ms needs ~350 launches gone (half the graph) with no slower kernels;
+  the persistent GDN megakernel (sweep20) already showed ~0. Fusion rewrites are now expected at +0-3%, not 130 tok/s.

@@ -202,6 +202,7 @@ would need more power. Raw output: [`snapshot/2026-11-22/sweep19.txt`](snapshot/
 | gfx1151 decode set (`LANECELL`, `MMVF_ROWS`, `TSUM`, `LFUSE`, `GDN_SPLIT`, `PLE_BATCH`, `EXPERT_V2`) | −2–3% | no |
 | `STRATA_GDN_SPLIT=1` alone (GDN step on 4 blocks a head + a norm kernel; 2026-11-23) | 114.4 → 112.9, same answers: more blocks don't speed the recurrence, the extra launch costs ~0.25 ms | no |
 | `MMVF_ROWS` / `TSUM` / `ATTN_LANECELL` / `Q6_PACKED`, each alone (2026-11-23, `snapshot/2026-11-23/sweep34.txt`) | 114.3 → 113.2 / 114.3 / 114.2 / 115.1; Q6_PACKED's ms/window is unchanged and its answers differ (acceptance luck, not speed) | no |
+| `STRATA_EXP_AUTO=2` (IQ3_XXS gate/up + SwiGLU + q8_1 in one launch; 2026-11-23) | 114.4 → 114.0, same answers: the launch saved is lost in the slower fused kernel | no |
 | `STRATA_HC_REQ8=1` | 114 / 107, prompts −5% | no |
 | `STRATA_COPY_HIP_PRIO=1`, `--host-core sibling` | −3% / none | no |
 | higher core clock (no SCLK cap) | ~+1 tok/s, coil whine | no |
