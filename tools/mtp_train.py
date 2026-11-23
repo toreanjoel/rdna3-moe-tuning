@@ -13,7 +13,7 @@ import torch.nn.functional as F
 H, HC, LR, NH, NKV, HD, NROT, FF, NE, K = 2560, 4, 320, 24, 2, 256, 64, 640, 512, 10
 EPS, THETA = 1e-6, 1e7
 D = Path(os.environ.get("MTP_D", Path.home() / "work/rdna3/data/mtp"))
-DEV = "cuda"
+DEV = os.environ.get("MTP_DEV", "cuda")
 
 
 # ---------------------------------------------------------------- weights

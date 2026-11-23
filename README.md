@@ -46,21 +46,13 @@ Everything below is detail: hardware, measurements, every setting and everything
 
 Single user, distinct prompts, 256 generated tokens, median of 5 runs, greedy.
 
-```mermaid
-xychart-beta horizontal
-    title "Generation speed on this box, 8K context (tok/s)"
-    x-axis ["llama.cpp Vulkan", "llama.cpp ROCm", "Strata (stock)", "Strata-rdna3 (fork config)", "this repo, daily (default)", "this repo, perf mode (opt-in)"]
-    y-axis "tok/s" 0 --> 130
-    bar [13, 25, 80, 103, 118, 122]
-```
+![Generation speed, 8K context](docs/img/gen-8k.png)
 
-```mermaid
-xychart-beta horizontal
-    title "Prompt reading, 32K tokens (tok/s)"
-    x-axis ["Strata (stock)", "Strata-rdna3 (fork config)", "Strata-rdna3 (this repo)"]
-    y-axis "tok/s" 0 --> 4000
-    bar [2000, 3266, 3553]
-```
+![What each step added](docs/img/ladder.png)
+
+![Varied chats with the MTP draft-head work](docs/img/chats.png)
+
+![Prompt reading](docs/img/prompt.png)
 
 | | prompt 8K | prompt 32K | generation 8K / 32K |
 |---|---:|---:|---:|
@@ -84,18 +76,9 @@ is the GPU waiting on the ~2 experts a layer that miss VRAM; the CPU pool alread
 bandwidth ceiling (~50 GB/s), so faster CPU code would barely help. GPU time per step
 (8K context, `STRATA_DECODE_TIMING=1 STRATA_VERIFY_PROFILE=1`):
 
-```mermaid
-pie title GPU time per step (21.7 ms, profiled)
-    "attention / linear-attention layers" : 7.6
-    "experts in VRAM" : 4.1
-    "hyper-connections" : 3.4
-    "router + shared expert" : 2.8
-    "copy + combine" : 2.0
-    "output head" : 0.7
-    "waits (CPU, copies, gaps)" : 1.1
-```
+![GPU time per generation step](docs/img/step-time.png)
 
-Raw numbers: [`snapshot/2026-11-21/`](snapshot/2026-11-21/) (stock Strata, llama.cpp, first fork sweeps),
+Charts: `python3 tools/plots.py` (numbers in the script). Raw numbers: [`snapshot/2026-11-21/`](snapshot/2026-11-21/) (stock Strata, llama.cpp, first fork sweeps),
 [`snapshot/2026-11-22/`](snapshot/2026-11-22/) (CPU kernel / routing sweep with quality check, engine-switch
 sweep, profile, kernel benches and sweeps 7–11, `bench-final.log`).
 
