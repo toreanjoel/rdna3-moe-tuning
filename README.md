@@ -106,7 +106,7 @@ Needs Ubuntu 24.04 (or similar), ROCm 7.x in `/opt/rocm`, your user in the `rend
 
 ```bash
 git clone https://github.com/toreanjoel/rdna3-moe-tuning && cd rdna3-moe-tuning
-./strata-rdna3.sh install    # deps (sudo), engine build for gfx1100, model download if missing, expert pack
+./strata-rdna3.sh install    # deps (sudo), engine build for gfx1100, model download if missing, expert pack, q4_0 MTP head
 ./strata-rdna3.sh serve      # tune the card, start the server in the background
 ```
 
@@ -128,6 +128,7 @@ task to try a tool against it.
 | command | does |
 |---|---|
 | `install` | one-time setup (idempotent) |
+| `mtp4` | build the q4_0 MTP draft head (part of `install`; for older installs). `serve` uses it when present; `MTP=2` = the shipped q2_0 head |
 | `serve` | apply tuning, (re)start the server; survives logout |
 | `perf` | `serve` with perf clocks (core 3000, VRAM 1400), opt-in; [perf mode](#perf-mode-not-default) |
 | `stop` / `status` | stop it / port, process, GPU power and VRAM |
@@ -258,4 +259,5 @@ power, and 47 GB of reserved huge pages (transparent huge pages already back ~52
 | `snapshot/<date>/` | raw measurements behind every number here |
 | [`docs/history-stock-strata.md`](docs/history-stock-strata.md) | the stock-Strata investigation (clocks, power, decode ladder) |
 | [`docs/kernel-work-notes.md`](docs/kernel-work-notes.md) | running kernel-work log: measurements, decisions, what was dropped and why, box quirks |
+| `tools/sync-box.sh` | copy this repo's script, patches and tools to a remote box (`tools/sync-box.sh user@host`) so its `serve` runs the latest |
 | `tools/strata-oc` | optional root helper for clocks/power (install steps in its header; caps power at 294 W) |
