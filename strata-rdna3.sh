@@ -33,7 +33,10 @@ CTX=${CTX:-131072}                                     # max context (the fork s
 KERNENV="STRATA_RDNA_PAIR=1 STRATA_GR_TAIL=1 STRATA_EXP_AUTO=1"
 # MTP draft head: its 512 experts at q4_0 (data/mtp/rt-q4_0, built by `mtp4`; patches/mtp-native.patch) instead of the
 # shipped q2_0 (42% RMS error): varied chats +1.1% (sweep41). MTP=2 = the shipped head.
-MTP=${MTP:-4}; MTPARG=""; [ "$MTP" = 4 ] && [ -s "$D/mtp/rt-q4_0/experts.txt" ] && MTPARG="--mtp $D/mtp/rt-q4_0"
+MTP=${MTP:-ft}; MTPARG=""; [ "$MTP" != 2 ] && [ -s "$D/mtp/rt-q4_0/experts.txt" ] && MTPARG="--mtp $D/mtp/rt-q4_0"
+# MTP=ft: the draft layer retrained on this model's own answers (tools/mtp_pipeline.sh + mtp_train.py -> data/mtp/rt-ft;
+# varied chats 136.3 -> 137.2, +0.7%, every round of sweep44). Default once built, else q4_0; MTP=4 forces q4_0.
+[ "$MTP" = ft ] && [ -s "$D/mtp/rt-ft/experts.txt" ] && MTPARG="--mtp $D/mtp/rt-ft"
 # The draft layer's hidden-input norm per hyper-connection stream (llama.cpp's qwen4exp MTP graph) instead of one RMS
 # over all four: varied chats 131.2 -> 136.9 (+4.3%, sweeps 42-43, 4 rounds). Drafts only; HNORM=0 = the fork's pooled norm.
 [ "${HNORM:-1}" = 1 ] && MTPARG="$MTPARG --mtp-hnorm stream"

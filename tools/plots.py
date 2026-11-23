@@ -70,8 +70,9 @@ def chats():
     hbars("chats.png", "Varied chats with the MTP draft-head work", [
         ("shipped q2_0 draft head", 131.1, False, "131.1"),
         ("+ q4_0 draft experts (mtp-native)", 132.6, False, "132.6"),
-        ("+ per-stream hidden norm (--mtp-hnorm stream)", 136.9, True, "136.9"),
-    ], 160, "tools/chatbench.py, varied prompts, ≥3 alternated rounds (sweeps 42–43); a different bench from the 8K chart")
+        ("+ per-stream hidden norm (--mtp-hnorm stream)", 136.9, False, "136.9"),
+        ("+ draft layer retrained on this model", 137.2, True, "137.2"),
+    ], 160, "tools/chatbench.py, varied prompts, ≥3 alternated rounds (sweeps 42–44); a different bench from the 8K chart")
 
 
 def prompt():

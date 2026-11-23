@@ -137,7 +137,7 @@ Defaults are the measured best within the card's limits. Override any of them pe
 | `WATTS` | 294 | power cap; the ceiling for this card |
 | `SCLK` | 2300 | core clock max (MHz); kept low for coil whine, see [perf mode](#perf-mode-not-default) |
 | `MCLK` | 1400 | VRAM clock (MHz); +2.5% over 1300 and stable, 1500 crashes the box |
-| `MTP` | 4 | draft head experts: 4 = q4_0 (built by `mtp4`), 2 = the shipped q2_0 |
+| `MTP` | ft | draft head: ft = retrained on this model (`data/mtp/rt-ft`, falls back to q4_0 if not built), 4 = q4_0 experts (built by `mtp4`), 2 = the shipped q2_0 |
 | `HNORM` | 1 | draft layer normalizes each hyper-connection stream on its own (`--mtp-hnorm stream`, +4.3%); 0 = the fork's pooled norm |
 | `VO` | -50 | core voltage offset (mV) |
 | `EPP` / `BOOST` | performance / 1 | the CPU computes the experts not cached in VRAM |
@@ -193,6 +193,7 @@ would need more power. Raw output: [`snapshot/2026-11-22/sweep19.txt`](snapshot/
 | MTP head experts at q4_0 / q8_0 instead of the shipped q2_0 ([`patches/mtp-native.patch`](patches/mtp-native.patch), `./strata-rdna3.sh mtp4`; 2026-11-23) | varied chats 131.1 → 132.6 (q4_0) / 130.0 (q8_0); 2-prompt bench mixed (8K +4%, 32K −3% for q4_0, the text changes); q8 keeps +4–8% more tokens but costs ~960 expert-cache slots | **q4_0 yes** (`MTP=2` = shipped) |
 | `--mtp-hnorm stream` (the draft layer's hidden-input RMS per hyper-connection stream, as llama.cpp's qwen4exp MTP graph, not one RMS over all four; 2026-11-23, `snapshot/2026-11-23/sweep42.txt`, `sweep43.txt`) | varied chats 131.2 → 136.9 (+4.3%, 4 rounds, 136.1–137.1 each) | **yes** (`HNORM=0` = pooled) |
 | English-only draft vocabulary (`--mtp-draft-vocab data/draft_vocab_en.bin`) / the full vocabulary (`STRATA_MTP_FULL_HEAD=1`) | +2.6% alone, +0.2% on top of hnorm / −3.9% | no (non-English drafts would lose) / no |
+| MTP draft layer retrained on this model's greedy answers (`tools/mtp_train.py`, 1,500 prompts, 2,000 steps; `logs/sweep44.txt`; 2026-11-23) | held-out draft top-1 75.5 → 81.9% (step 1); varied chats 136.3 → 137.2 (+0.7%, 136.1/136.7/136.2 vs 137.1/137.1/137.5) | **yes** (`MTP=ft`, default once built) |
 | `STRATA_HC_REQ8=1` | 114 / 107, prompts −5% | no |
 | `STRATA_COPY_HIP_PRIO=1`, `--host-core sibling` | −3% / none | no |
 | higher core clock (no SCLK cap) | ~+1 tok/s, coil whine | no |
@@ -231,12 +232,12 @@ Drafting is tuned out on this model: the MTP head keeps ~2.2 tokens a step and 3
 every setting that drafts more costs more verify time than it keeps on real chats. ~180 tok/s would need ~3.4 tokens
 a step at today's step time, or a much shorter step.
 
-In progress: retraining the MTP draft head on this IQ3_S model's own answers, so more drafts get accepted. Answers
-stay exact either way; the estimate is +5–25%, not certain. Pipeline (`tools/mtp_pipeline.sh <prompts> <max tokens>`):
+Retraining the MTP draft head on this IQ3_S model's own answers (`tools/mtp_pipeline.sh <prompts> <max tokens>`):
 `patches/mtp-dump.patch` (`STRATA_MTP_DUMP`) writes each prompt position's hidden state and next token,
 `tools/mtp_data.py` generates prompts and greedy answers and replays them through the dump, and `tools/mtp_train.py`
-(a PyTorch copy of the draft layer) trains a LoRA on the first draft step and exports the runtime format. First run:
-1,500 prompts, ~0.8M tokens. The result goes in the table above.
+(a PyTorch copy of the draft layer) fine-tunes its 89M dense parameters on draft steps 1 and 2 and exports the runtime
+format. 1,500 prompts (~0.8M tokens, a 90 GB dump), 2,000 steps (~20 min on the 7900 XTX). Held-out draft accuracy
+rose a lot (steps 1/2/3: 75.5/69.1/66.2% → 81.9/76.2/72.3%), but real chats gained only +0.7%; see the table above.
 
 Next: the GPU side of a step ([profile](#where-a-generation-steps-time-goes)), mainly fewer graph nodes (~3 ms of a
 ~20 ms step). Left out on purpose: higher clocks or

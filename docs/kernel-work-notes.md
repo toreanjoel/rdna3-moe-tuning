@@ -267,3 +267,11 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
 - Retrain setup: patches/mtp-dump.patch (STRATA_MTP_DUMP: serve prompt-path residual rows + tokens), tools/mtp_data.py
   (prompts / greedy answers / replay), tools/mtp_pipeline.sh, tools/mtp_train.py (torch reference of the draft layer,
   step-1 + chain-2 distillation, export to the rt format). Torch 2.9.1+rocm6.4 in ~/work/rdna3/train-venv.
+- 2026-11-23 MTP retrain result (sweep44): mtp_train.py train --chain 2, 2,000 steps, lr 2e-5, draft-vocab mask
+  (labels outside zh60k ignored; with them in, loss was inf). Held-out top-1 per draft step 75.5/69.1/66.2 ->
+  81.9/76.2/72.3% (step 1000: 81.1, 1500: 81.8, saturating). Varied chats base 136.1/136.7/136.2 vs ft
+  137.1/137.1/137.5 = +0.7%, every round. Offline gain mostly doesn't reach real chats: chatbench prompts differ from
+  the generated training prompts, and spec-min-p 0.5 gates on the draft's confidence. Kept (MTP=ft default once built).
+  Next: spec-min-p / spec with the ft head (sweep45).
+- Box ssh: a remote command whose text contains "strata"/"chatbench" or a pkill pattern gets killed by
+  strata-rdna3.sh stop/serve or pkill -f (exit 255). Launch via setsid nohup bash <script>; bracket patterns in pgrep.
