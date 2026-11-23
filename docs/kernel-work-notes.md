@@ -257,3 +257,13 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
 - Varied chats (tools/chatbench.py, 12 requests, 2 rounds, identical both rounds; sweep41): q2 131.1, q4 132.6 (+1.1%),
   q8 130.0-130.1 (-0.8%). Default now q4_0 (MTP=4; MTP=2 = shipped head). Precision is not the head's main limit:
   q8 keeps only +4-8% more tokens. Retraining (distilling to this IQ3_S model) is next.
+
+## Draft-layer options on varied chats 2026-11-23 (tools/sweep42.sh, sweep43.sh; chatbench, 6 prompts a round)
+- --mtp-hnorm stream (pre_fc_norm_hidden as one RMS per hyper-connection stream, llama.cpp's qwen4exp MTP graph; the fork
+  defaults to one RMS over all 10240): base 131.6 / 130.5 / 131.1 / 131.3 -> 136.1 / 135.9 / 137.1 / 136.7 (+4.3%). The
+  pooled norm looks like a transcription slip in the fork; stream is now the default (HNORM=1).
+- English draft vocab: +2.6% alone (134.8 / 133.9), 137.2 / 137.0 with hnorm (+0.2%): not taken (non-English loses).
+- STRATA_MTP_FULL_HEAD=1 (whole vocabulary): 126.5 / 125.5 (-3.9%): the bigger head costs more than it catches.
+- Retrain setup: patches/mtp-dump.patch (STRATA_MTP_DUMP: serve prompt-path residual rows + tokens), tools/mtp_data.py
+  (prompts / greedy answers / replay), tools/mtp_pipeline.sh, tools/mtp_train.py (torch reference of the draft layer,
+  step-1 + chain-2 distillation, export to the rt format). Torch 2.9.1+rocm6.4 in ~/work/rdna3/train-venv.

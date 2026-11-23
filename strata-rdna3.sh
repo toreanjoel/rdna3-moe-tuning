@@ -34,6 +34,9 @@ KERNENV="STRATA_RDNA_PAIR=1 STRATA_GR_TAIL=1 STRATA_EXP_AUTO=1"
 # MTP draft head: its 512 experts at q4_0 (data/mtp/rt-q4_0, built by `mtp4`; patches/mtp-native.patch) instead of the
 # shipped q2_0 (42% RMS error): varied chats +1.1% (sweep41). MTP=2 = the shipped head.
 MTP=${MTP:-4}; MTPARG=""; [ "$MTP" = 4 ] && [ -s "$D/mtp/rt-q4_0/experts.txt" ] && MTPARG="--mtp $D/mtp/rt-q4_0"
+# The draft layer's hidden-input norm per hyper-connection stream (llama.cpp's qwen4exp MTP graph) instead of one RMS
+# over all four: varied chats 131.2 -> 136.9 (+4.3%, sweeps 42-43, 4 rounds). Drafts only; HNORM=0 = the fork's pooled norm.
+[ "${HNORM:-1}" = 1 ] && MTPARG="$MTPARG --mtp-hnorm stream"
 export STRATA_X_ENV="STRATA_HIPBLASLT_TUNING=$TABLE $KERNENV $FASTENV ${XENV:-}" STRATA_X_ARGS="--max-context $CTX $MTPARG ${XARGS:-}"
 
 # setup.py moves the models of every Strata install listed in ~/.config/strata; a private config stops that.

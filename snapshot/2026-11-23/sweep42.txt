@@ -1,0 +1,17 @@
+== base_1  XENV=[] XARGS=[]
+mean 131.6 tok/s over 6 requests
+== hnorm_1  XENV=[] XARGS=[--mtp-hnorm stream]
+mean 136.1 tok/s over 6 requests
+== fullhead_1  XENV=[STRATA_MTP_FULL_HEAD=1] XARGS=[]
+mean 126.5 tok/s over 6 requests
+== envocab_1  XENV=[] XARGS=[--mtp-draft-vocab /home/bonfire/work/rdna3/engine/data/draft_vocab_en.bin]
+mean 134.8 tok/s over 6 requests
+== base_2  XENV=[] XARGS=[]
+mean 130.5 tok/s over 6 requests
+== hnorm_2  XENV=[] XARGS=[--mtp-hnorm stream]
+mean 135.9 tok/s over 6 requests
+== fullhead_2  XENV=[STRATA_MTP_FULL_HEAD=1] XARGS=[]
+mean 125.5 tok/s over 6 requests
+== envocab_2  XENV=[] XARGS=[--mtp-draft-vocab /home/bonfire/work/rdna3/engine/data/draft_vocab_en.bin]
+mean 133.9 tok/s over 6 requests
+sweep42 done

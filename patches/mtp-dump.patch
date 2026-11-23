@@ -1,0 +1,32 @@
+diff --git a/src/program/generate.cpp b/src/program/generate.cpp
+index a920ba7b..abe4c531 100644
+--- a/src/program/generate.cpp
++++ b/src/program/generate.cpp
+@@ -10546,6 +10546,27 @@ int main(int argc, char** argv) {
+         sp.on_chunk = [&](const float* R_rows, int64_t T, int64_t p0, std::string& e) -> bool {
+             std::vector<int32_t> nxt((size_t) T);
+             for (int64_t t = 0; t < T; ++t) nxt[(size_t) t] = (int32_t) cur[(size_t) (p0 + t + 1)];
++            // [rdna3-moe-tuning] STRATA_MTP_DUMP=<file> (training data for the MTP head; off = nothing): per chunk
++            // "MTPD", int64 p0, T, n_cur, n_cur int32 tokens (the whole sequence), T x hc*n_embd bf16 final residual rows
++            static FILE* mtp_dump = [] { const char* f = std::getenv("STRATA_MTP_DUMP"); return f ? std::fopen(f, "ab") : nullptr; }();
++            if (mtp_dump != nullptr && T > 0) {
++                const int64_t hcn = g.hc * g.n_embd;
++                std::vector<float> rf((size_t) (T * hcn));
++                cudaDeviceSynchronize();
++                if (cudaMemcpy(rf.data(), R_rows, rf.size() * sizeof(float), cudaMemcpyDeviceToHost) == cudaSuccess) {
++                    std::vector<uint16_t> rb(rf.size());
++                    for (size_t i = 0; i < rf.size(); ++i) {
++                        uint32_t u; std::memcpy(&u, &rf[i], 4);
++                        rb[i] = (uint16_t) ((u + 0x7FFFu + ((u >> 16) & 1u)) >> 16);
++                    }
++                    const int64_t hdr[3] = {p0, T, (int64_t) cur.size()};
++                    std::fwrite("MTPD", 1, 4, mtp_dump);
++                    std::fwrite(hdr, sizeof(int64_t), 3, mtp_dump);
++                    for (size_t i = 0; i < cur.size(); ++i) { const int32_t v = (int32_t) cur[i]; std::fwrite(&v, 4, 1, mtp_dump); }
++                    std::fwrite(rb.data(), 2, rb.size(), mtp_dump);
++                    std::fflush(mtp_dump);
++                }
++            }
+             // E-9: batched through the prompt path when it can (a layer split: only with STRATA_SPLIT_MTP_BATCH=1)
+             bool batched = false;
+             const strata::program::draft_kv::Plan dkv = strata::program::draft_kv::plan(

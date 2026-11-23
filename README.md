@@ -154,6 +154,8 @@ Defaults are the measured best within the card's limits. Override any of them pe
 | `WATTS` | 294 | power cap; the ceiling for this card |
 | `SCLK` | 2300 | core clock max (MHz); kept low for coil whine, see [perf mode](#perf-mode-not-default) |
 | `MCLK` | 1400 | VRAM clock (MHz); +2.5% over 1300 and stable, 1500 crashes the box |
+| `MTP` | 4 | draft head experts: 4 = q4_0 (built by `mtp4`), 2 = the shipped q2_0 |
+| `HNORM` | 1 | draft layer normalizes each hyper-connection stream on its own (`--mtp-hnorm stream`, +4.3%); 0 = the fork's pooled norm |
 | `VO` | -50 | core voltage offset (mV) |
 | `EPP` / `BOOST` | performance / 1 | the CPU computes the experts not cached in VRAM |
 | `TABLE` | hipBLASLt `100202` | matches ROCm 7.2.x: prompts +8% |
@@ -206,6 +208,8 @@ would need more power. Raw output: [`snapshot/2026-11-22/sweep19.txt`](snapshot/
 | `STRATA_EXP_AUTO=2` (IQ3_XXS gate/up + SwiGLU + q8_1 in one launch; 2026-11-23) | 114.4 → 114.0, same answers: the launch saved is lost in the slower fused kernel | no |
 | Tree drafting (also verify the MTP head's runner-up; measured with [`patches/mtp-top2.patch`](patches/mtp-top2.patch), 2026-11-23) | runner-up right on 33–41% of rejected drafts: ~+0.15 tokens a window (+7% at best) for up to 3 more verify rows | no |
 | MTP head experts at q4_0 / q8_0 instead of the shipped q2_0 ([`patches/mtp-native.patch`](patches/mtp-native.patch), `./strata-rdna3.sh mtp4`; 2026-11-23) | varied chats 131.1 → 132.6 (q4_0) / 130.0 (q8_0); 2-prompt bench mixed (8K +4%, 32K −3% for q4_0, the text changes); q8 keeps +4–8% more tokens but costs ~960 expert-cache slots | **q4_0 yes** (`MTP=2` = shipped) |
+| `--mtp-hnorm stream` (the draft layer's hidden-input RMS per hyper-connection stream, as llama.cpp's qwen4exp MTP graph, not one RMS over all four; 2026-11-23, `snapshot/2026-11-23/sweep42.txt`, `sweep43.txt`) | varied chats 131.2 → 136.9 (+4.3%, 4 rounds, 136.1–137.1 each) | **yes** (`HNORM=0` = pooled) |
+| English-only draft vocabulary (`--mtp-draft-vocab data/draft_vocab_en.bin`) / the full vocabulary (`STRATA_MTP_FULL_HEAD=1`) | +2.6% alone, +0.2% on top of hnorm / −3.9% | no (non-English drafts would lose) / no |
 | `STRATA_HC_REQ8=1` | 114 / 107, prompts −5% | no |
 | `STRATA_COPY_HIP_PRIO=1`, `--host-core sibling` | −3% / none | no |
 | higher core clock (no SCLK cap) | ~+1 tok/s, coil whine | no |
