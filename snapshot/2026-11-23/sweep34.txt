@@ -1,0 +1,30 @@
+== s34_1 [base] 114.3 18.49 ms/window
+  SAME
+  SAME
+== s34_2 [STRATA_MMVF_ROWS=1] 113.2 18.71 ms/window
+  SAME
+  SAME
+== s34_3 [STRATA_TSUM=1] 114.3 18.49 ms/window
+  SAME
+  SAME
+== s34_4 [STRATA_ATTN_LANECELL=1] 114.2 18.52 ms/window
+  SAME
+  SAME
+== s34_5 [STRATA_Q6_PACKED=1] 115.1 18.51 ms/window
+  DIFF
+  DIFF
+== s34_6 [base] 114.3 18.51 ms/window
+  SAME
+  SAME
+== s34_7 [STRATA_MMVF_ROWS=1] 113.3 18.69 ms/window
+  SAME
+  SAME
+== s34_8 [STRATA_TSUM=1] 114.2 18.51 ms/window
+  SAME
+  SAME
+== s34_9 [STRATA_ATTN_LANECELL=1] 114.2 18.54 ms/window
+  SAME
+  SAME
+== s34_10 [STRATA_Q6_PACKED=1] 115.1 18.51 ms/window
+  DIFF
+  DIFF

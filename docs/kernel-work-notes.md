@@ -221,3 +221,9 @@ First step: per-kernel timing (rocprofv3 --kernel-trace on a short bench) to see
   18.50 / 18.50 -> 18.75 / 18.78 ms/window, 114.5 / 114.3 -> 113.0 / 112.8 tok/s. 4x the blocks gives the body
   nothing, the extra launch costs ~7 us a layer. The recurrence is not the GDN gap; a fused last-block-norm split isn't worth building.
 - Daily MCLK 1400 now (117.7 / 117.4 plain bench; DECODE_TIMING + REP 2 reads ~114).
+
+## gfx1151 decode switches one at a time 2026-11-23 (DROPPED; snapshot/2026-11-23/sweep34.txt, 8K, REP 2, 2 rounds)
+- tok/s, ms/window (base 114.3 / 18.49-18.51): MMVF_ROWS 113.2-113.3 / 18.69-18.71 (bitwise, slower); TSUM 114.2-114.3 /
+  18.49-18.51 (bitwise, nothing); ATTN_LANECELL 114.2 / 18.52-18.54 (bitwise, nothing); Q6_PACKED 115.1 / 18.51 but answers
+  DIFF: same ms/window, so the +0.7% is a luckier acceptance on changed tokens, not speed. With GDN_SPLIT (above) every
+  item of the gfx1151 set is now ruled out alone on gfx1100. SH_STREAM was already out (graph branches cost here).
